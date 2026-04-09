@@ -17,13 +17,21 @@ class ServiceProvider extends ServiceProviderBase
     }
 
     /**
-     * mergeTools registers October CMS MCP tools with Laravel Boost.
+     * mergeTools registers October CMS MCP tools with Laravel Boost
+     * and replaces the default search-docs with our own implementation.
      */
     protected function mergeTools(): void
     {
-        $existing = $this->app['config']->get('boost.mcp.tools.include', []);
+        // Exclude the default search-docs tool (replaced by SearchOctoberDocs)
+        $excluded = $this->app['config']->get('boost.mcp.tools.exclude', []);
+        $this->app['config']->set('boost.mcp.tools.exclude', array_merge($excluded, [
+            \Laravel\Boost\Mcp\Tools\SearchDocs::class,
+        ]));
 
-        $this->app['config']->set('boost.mcp.tools.include', array_merge($existing, [
+        // Include October CMS tools
+        $included = $this->app['config']->get('boost.mcp.tools.include', []);
+        $this->app['config']->set('boost.mcp.tools.include', array_merge($included, [
+            \October\Boost\Tools\SearchOctoberDocs::class,
             \October\Boost\Tools\GetBlueprints::class,
             \October\Boost\Tools\GetPluginRegistration::class,
             \October\Boost\Tools\GetThemeStructure::class,
