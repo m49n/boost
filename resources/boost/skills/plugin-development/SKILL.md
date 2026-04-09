@@ -154,37 +154,45 @@ The `updates/version.yaml` file tracks versions and references migration scripts
 
 ```yaml
 v1.0.1: First version
-v1.0.2: Added categories
+v1.0.2:
+    - Set up database tables
+    - 000001_create_posts.php
+    - 000002_create_categories.php
 v1.0.3:
-    - Added comments support
-    - create_comments_table.php
-v1.0.4:
-    - Seeded default categories
-    - seed_categories.php
+    - Seed default categories
+    - seed_tables.php
+v1.1.0: Added comments support
+v1.2.0:
+    - Added tags
+    - 000003_create_tags.php
+    - 000004_create_post_tags.php
+v2.0.0:
+    - Major upgrade
+    - migrate_v2_0_0.php
 ```
 
 ## Migrations
 
-Migration files live in `updates/` and use Laravel's schema builder:
+Migration files live in `updates/` and use **anonymous classes** with zero-padded numbered filenames:
 
 ```php
-<?php namespace Acme\Blog\Updates;
+<?php // updates/000001_create_posts.php
 
-use Schema;
 use October\Rain\Database\Schema\Blueprint;
 use October\Rain\Database\Updates\Migration;
 
-class CreatePostsTable extends Migration
+return new class extends Migration
 {
     public function up()
     {
         Schema::create('acme_blog_posts', function (Blueprint $table) {
-            $table->id();
+            $table->bigIncrements('id');
             $table->string('title');
-            $table->string('slug')->unique();
-            $table->text('content')->nullable();
+            $table->string('slug')->index();
+            $table->mediumText('content')->nullable();
             $table->boolean('is_published')->default(false);
             $table->timestamp('published_at')->nullable();
+            $table->timestamp('deleted_at')->nullable();
             $table->timestamps();
         });
     }
@@ -193,10 +201,76 @@ class CreatePostsTable extends Migration
     {
         Schema::dropIfExists('acme_blog_posts');
     }
-}
+};
 ```
 
-Table naming convention: `{author}_{plugin}_{plural_name}` in snake_case (e.g., `acme_blog_posts`).
+### Migration Conventions
+
+- **Filenames** use zero-padded numbering: `000001_create_posts.php`, `000002_create_categories.php`
+- **Anonymous classes**: use `return new class extends Migration` not named classes
+- **IDs**: use `$table->bigIncrements('id')` not `$table->id()`
+- **Table names**: `{author}_{plugin}_{plural_name}` in snake_case (e.g., `acme_blog_posts`)
+- **Extension migrations** that modify another plugin's tables use `x` prefix: `x00001_extend_user_groups.php`
+- **Version migrations** for major/minor upgrades use `migrate_v{X}_{Y}_{Z}.php` naming (see below)
+
+### Version Migrations
+
+For major or minor version bumps, use version migration scripts named `migrate_vX_Y_Z.php`. These are "patch" migrations that handle schema changes and data migration for upgrades. They can safely be deleted later once all installations have upgraded past that version.
+
+Reference them in `version.yaml` under the version entry:
+
+```yaml
+v3.0.0:
+    - Major Upgrade to Blog Plugin
+    - migrate_v3_0_0.php
+v3.1.0:
+    - New tagging system
+    - migrate_v3_1_0.php
+```
+
+Version migrations typically check if changes are needed before applying them, and can use `db.updater` to run numbered migrations that may have been missed:
+
+```php
+<?php // updates/migrate_v3_0_0.php
+
+use October\Rain\Database\Schema\Blueprint;
+use October\Rain\Database\Updates\Migration;
+
+return new class extends Migration
+{
+    public function up()
+    {
+        // Run a numbered migration if its table doesn't exist yet
+        $updater = App::make('db.updater');
+        if (!Schema::hasTable('acme_blog_tags')) {
+            $updater->setUp(__DIR__.'/000003_create_tags.php');
+        }
+
+        // Add new columns if they don't exist
+        if (!Schema::hasColumn('acme_blog_posts', 'summary')) {
+            Schema::table('acme_blog_posts', function (Blueprint $table) {
+                $table->text('summary')->nullable();
+                $table->boolean('is_featured')->default(false);
+            });
+        }
+
+        // Migrate data from old columns to new
+        if (Schema::hasColumn('acme_blog_posts', 'old_status')) {
+            Db::update("update acme_blog_posts set is_published=1 where old_status='active'");
+        }
+    }
+
+    public function down()
+    {
+    }
+};
+```
+
+Key patterns for version migrations:
+- Always guard with `Schema::hasColumn()` / `Schema::hasTable()` checks - the migration must be safe to run on both fresh installs and upgrades
+- Use `App::make('db.updater')->setUp()` to run numbered migrations that may not have run yet
+- Use `Db::update()` for data migration between columns
+- The `down()` method is typically empty - these are one-way upgrade patches
 
 ## Dependencies
 
@@ -424,6 +498,8 @@ Register templates in Plugin.php with `registerMailTemplates()` (see above).
 - The `register()` method runs before all plugins are loaded - do not reference other plugins here; use `boot()` instead.
 - Table names must be globally unique - always prefix with author and plugin name.
 - Never modify migrations that have run in production - create new migration files instead.
+- Migrations use anonymous classes (`return new class extends Migration`), not named classes.
+- Migration filenames are zero-padded numbered (`000001_create_posts.php`), not descriptive names.
 - The `$require` array uses dot notation (`Acme.Blog`), not namespace notation.
 - Settings models do not need a migration - they store data automatically in the `system_settings` table.
 - Always check the controller/model type in event listeners to avoid extending the wrong form or list.
