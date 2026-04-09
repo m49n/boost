@@ -39,7 +39,7 @@ class GetBlueprints extends Tool
      */
     public function handle(Request $request): Response
     {
-        if (!class_exists(\Tailor\Classes\BlueprintIndexer::class)) {
+        if (!class_exists(\Tailor\Classes\Blueprint::class)) {
             return Response::error('Tailor module is not available in this October CMS installation.');
         }
 
@@ -47,13 +47,11 @@ class GetBlueprints extends Tool
         $handle = $request->get('handle');
 
         try {
-            $indexer = \Tailor\Classes\BlueprintIndexer::instance();
-
             if ($handle) {
-                return $this->getDetailedBlueprint($indexer, $handle);
+                return $this->getDetailedBlueprint($handle);
             }
 
-            return $this->getBlueprintSummary($indexer, $summary);
+            return $this->getBlueprintSummary($summary);
         }
         catch (\Throwable $e) {
             return Response::error('Failed to read blueprints: '.$e->getMessage());
@@ -63,9 +61,9 @@ class GetBlueprints extends Tool
     /**
      * getDetailedBlueprint returns full details for a single blueprint.
      */
-    protected function getDetailedBlueprint($indexer, string $handle): Response
+    protected function getDetailedBlueprint(string $handle): Response
     {
-        $blueprint = $indexer->findByHandle($handle);
+        $blueprint = \Tailor\Classes\BlueprintIndexer::instance()->findByHandle($handle);
 
         if (!$blueprint) {
             return Response::error("Blueprint with handle '{$handle}' not found.");
@@ -96,11 +94,11 @@ class GetBlueprints extends Tool
     /**
      * getBlueprintSummary returns a list of all blueprints.
      */
-    protected function getBlueprintSummary($indexer, bool $summary): Response
+    protected function getBlueprintSummary(bool $summary): Response
     {
         $blueprints = [];
 
-        foreach ($indexer->listBlueprints() as $blueprint) {
+        foreach (\Tailor\Classes\Blueprint::listInProject() as $blueprint) {
             $entry = [
                 'handle' => $blueprint->handle,
                 'type' => $blueprint->type,
