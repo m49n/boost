@@ -43,7 +43,7 @@ class SearchOctoberDocs extends Tool
         'octobercms' => [
             'owner' => 'octobercms',
             'repo' => 'docs',
-            'branch' => 'main',
+            'branch' => 'develop',
             'path_prefix' => '4.x/',
             'label' => 'October CMS',
             'package' => 'october/rain',
@@ -163,7 +163,8 @@ class SearchOctoberDocs extends Tool
      */
     protected function getRepoTree(array $repo): array
     {
-        $cacheKey = sprintf('boost:october-docs:tree:%s/%s', $repo['owner'], $repo['repo']);
+        $branch = $this->resolveBranch($repo);
+        $cacheKey = sprintf('boost:october-docs:tree:%s/%s:%s', $repo['owner'], $repo['repo'], $branch);
 
         return rescue(
             fn () => Cache::remember($cacheKey, 21600, fn () => $this->fetchRepoTree($repo)),
@@ -251,7 +252,8 @@ class SearchOctoberDocs extends Tool
      */
     protected function getFileContent(array $repo, string $path): string
     {
-        $cacheKey = sprintf('boost:october-docs:file:%s/%s:%s', $repo['owner'], $repo['repo'], $path);
+        $branch = $this->resolveBranch($repo);
+        $cacheKey = sprintf('boost:october-docs:file:%s/%s:%s:%s', $repo['owner'], $repo['repo'], $branch, $path);
 
         return rescue(
             fn () => Cache::remember($cacheKey, 86400, fn () => $this->fetchFileContent($repo, $path)),
@@ -336,9 +338,27 @@ class SearchOctoberDocs extends Tool
             }
         }
 
-        // Sort by path score, take top 30 for content analysis
+        // Group candidates by repo, sort each group by path score
+        $grouped = [];
+        foreach ($candidates as $candidate) {
+            $grouped[$candidate['repoKey']][] = $candidate;
+        }
+        foreach ($grouped as $key => $group) {
+            usort($group, fn ($a, $b) => $b['pathScore'] <=> $a['pathScore']);
+            $grouped[$key] = $group;
+        }
+
+        // Take top candidates per repo proportionally (min 5 per repo, up to 30 total)
+        $maxCandidates = 30;
+        $repoCount = count($grouped);
+        $perRepo = max(5, intdiv($maxCandidates, $repoCount));
+        $candidates = [];
+        foreach ($grouped as $group) {
+            array_push($candidates, ...array_slice($group, 0, $perRepo));
+        }
+
+        // Sort merged candidates by path score for content fetch priority
         usort($candidates, fn ($a, $b) => $b['pathScore'] <=> $a['pathScore']);
-        $candidates = array_slice($candidates, 0, 30);
 
         // Pass 2: Fetch content and score
         $results = [];
