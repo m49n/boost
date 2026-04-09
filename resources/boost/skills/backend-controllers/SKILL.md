@@ -7,7 +7,7 @@ metadata:
 ---
 # October CMS Backend Controllers
 
-Backend controllers power the admin panel. They use **behaviors** — composable mixins configured via YAML files — to provide list, form, and relation management features.
+Backend controllers power the admin panel. They use **behaviors** - composable mixins configured via YAML files - to provide list, form, and relation management features.
 
 ## Scaffolding
 
@@ -16,8 +16,8 @@ php artisan create:controller Acme.Blog Posts
 ```
 
 This creates:
-- `controllers/Posts.php` — the controller class
-- `controllers/posts/` — views directory with config files
+- `controllers/Posts.php` - the controller class
+- `controllers/posts/` - views directory with config files
 
 ## Controller Structure
 
@@ -322,6 +322,187 @@ Posts::extendListColumns(function ($list, $model) {
 });
 ```
 
+## Controller Behavior Overrides
+
+Controllers can override behavior methods to customize form and list behavior:
+
+### Form Overrides
+
+```php
+class Posts extends \Backend\Classes\Controller
+{
+    // Before/after form save
+    public function formBeforeSave($model) { }
+    public function formAfterSave($model) { }
+
+    // Before/after create specifically
+    public function formBeforeCreate($model) { }
+    public function formAfterCreate($model) { }
+
+    // Before/after update specifically
+    public function formBeforeUpdate($model) { }
+    public function formAfterUpdate($model) { }
+
+    // Before/after delete
+    public function formAfterDelete($model) { }
+
+    // Extend the form query
+    public function formExtendQuery($query) { }
+
+    // Extend form fields programmatically
+    public function formExtendFields($form) { }
+
+    // Extend field configuration before rendering
+    public function formExtendFieldsBefore($form) { }
+
+    // Modify the form model
+    public function formExtendModel($model) { }
+
+    // Extend the refresh data for specific fields
+    public function formExtendRefreshData($form, $fields) { }
+}
+```
+
+### List Overrides
+
+```php
+class Posts extends \Backend\Classes\Controller
+{
+    // Extend the list query
+    public function listExtendQuery($query, $definition = null) {
+        $query->where('is_archived', false);
+    }
+
+    // Extend list columns programmatically
+    public function listExtendColumns($list) { }
+
+    // Modify records after retrieval
+    public function listExtendRecords($records, $definition = null) { }
+
+    // Modify list filter scopes
+    public function listFilterExtendScopes($filter) { }
+
+    // Override how list records are retrieved
+    public function listFilterExtendQuery($query, $scope) { }
+}
+```
+
+## Import/Export Controller
+
+### Configuration (config_import_export.yaml)
+
+```yaml
+import:
+    title: Import Subscribers
+    modelClass: Acme\Campaign\Models\SubscriberImport
+    list: $/acme/campaign/models/subscriber/columns.yaml
+
+export:
+    title: Export Subscribers
+    modelClass: Acme\Campaign\Models\SubscriberExport
+    list: $/acme/campaign/models/subscriber/columns.yaml
+    fileName: subscribers.csv
+```
+
+### Import Model
+
+```php
+class SubscriberImport extends \Backend\Models\ImportModel
+{
+    public $rules = [];
+
+    public function importData($results, $sessionKey = null)
+    {
+        foreach ($results as $row => $data) {
+            try {
+                $subscriber = new Subscriber;
+                $subscriber->fill($data);
+                $subscriber->save();
+                $this->logCreated();
+            }
+            catch (\Exception $ex) {
+                $this->logError($row, $ex->getMessage());
+            }
+        }
+    }
+}
+```
+
+Log methods: `logCreated()`, `logUpdated()`, `logError($row, $message)`, `logWarning($row, $message)`, `logSkipped($row, $message)`.
+
+### Export Model
+
+```php
+class SubscriberExport extends \Backend\Models\ExportModel
+{
+    public function exportData($columns, $sessionKey = null)
+    {
+        $records = Subscriber::all();
+        $records->each(function ($record) use ($columns) {
+            $record->addVisible($columns);
+        });
+        return $records->toArray();
+    }
+}
+```
+
+### Controller View (import_export.php)
+
+```php
+<?php Block::put('breadcrumb') ?>
+    <li><span>Import / Export</span></li>
+<?php Block::endPut() ?>
+
+<div class="padded-container">
+    <?= $this->importExportRender() ?>
+</div>
+```
+
+## Reorder Controller
+
+### Configuration (config_reorder.yaml)
+
+```yaml
+title: Reorder Categories
+modelClass: Acme\Blog\Models\Category
+nameFrom: title
+```
+
+The model must use the `Sortable` or `NestedTree` trait. The controller view:
+
+```php
+<?= $this->reorderRender() ?>
+```
+
+## Additional Filter Scope Types
+
+```yaml
+scopes:
+    is_published:
+        label: Published
+        type: switch
+        conditions: is_published = :filtered
+    category:
+        label: Category
+        type: group
+        modelClass: Acme\Blog\Models\Category
+        nameFrom: name
+    created_at:
+        label: Created
+        type: daterange
+        conditions: created_at >= ':after' AND created_at <= ':before'
+    status:
+        label: Status
+        type: group
+        options:
+            draft: Draft
+            published: Published
+            archived: Archived
+        conditions: status = :filtered
+```
+
+Available filter scope types: `group`, `switch`, `date`, `daterange`, `text`, `number`, `numberrange`, `checkbox`, `dropdown`, `clear`.
+
 ## Custom AJAX Handlers in Controllers
 
 Controllers can define AJAX handlers called from backend pages:
@@ -350,7 +531,10 @@ class Posts extends \Backend\Classes\Controller
 - Always set `BackendMenu::setContext()` in the constructor to highlight the correct menu.
 - Config YAML paths use `$/` or `~/` prefix for absolute plugin paths.
 - The `relation` field type in forms requires `RelationController` behavior to be implemented on the controller.
-- Use `$requiredPermissions` to restrict controller access — this is an array of permission codes.
+- Use `$requiredPermissions` to restrict controller access - this is an array of permission codes.
 - Form views (`create.php`, `update.php`) must exist even if they just call `$this->formRender()`.
 - The list toolbar partial name should match what's specified in `config_list.yaml` under `toolbar.buttons`.
 - Use `$this->listRefresh()` and `$this->formRefreshField('field')` to update the UI from AJAX handlers.
+- Import/Export models extend `Backend\Models\ImportModel` and `Backend\Models\ExportModel` - not the regular plugin model.
+- Controller behavior overrides (e.g., `formBeforeSave`) are methods on the controller, not the model.
+- Multiple list definitions use array syntax: `$listConfig = ['posts' => 'config_list.yaml', 'comments' => 'config_comments_list.yaml']`.

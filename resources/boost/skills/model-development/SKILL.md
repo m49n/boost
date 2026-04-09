@@ -16,10 +16,10 @@ php artisan create:model Acme.Blog Post
 ```
 
 This creates:
-- `models/Post.php` — model class
-- `models/post/fields.yaml` — form field definitions
-- `models/post/columns.yaml` — list column definitions
-- `updates/create_posts_table.php` — migration file
+- `models/Post.php` - model class
+- `models/post/fields.yaml` - form field definitions
+- `models/post/columns.yaml` - list column definitions
+- `updates/create_posts_table.php` - migration file
 
 ## Model Structure
 
@@ -212,8 +212,8 @@ public $attributeNames = [
 ```
 
 The `:create` and `:update` suffixes make rules context-specific:
-- `'password' => 'required:create'` — only required when creating
-- `'email' => 'unique:users:update'` — only unique check when updating
+- `'password' => 'required:create'` - only required when creating
+- `'email' => 'unique:users:update'` - only unique check when updating
 
 ## Available Traits
 
@@ -354,6 +354,92 @@ $posts = Post::published()->recent()->get();
 $posts = Post::applyCategory(5)->get();
 ```
 
+## Accessors and Mutators
+
+Define accessors and mutators using `getFieldAttribute` / `setFieldAttribute`:
+
+```php
+// Accessor - transforms value when reading
+public function getFullNameAttribute()
+{
+    return $this->first_name . ' ' . $this->last_name;
+}
+
+// Mutator - transforms value when writing
+public function setPasswordAttribute($value)
+{
+    $this->attributes['password'] = bcrypt($value);
+}
+```
+
+Access: `$model->full_name`, `$model->password = 'secret'`.
+
+## Eager Loading
+
+Use the `$with` property to always eager-load relations:
+
+```php
+protected $with = ['category', 'author'];
+```
+
+Or eager-load on demand:
+
+```php
+$posts = Post::with(['category', 'comments' => function ($query) {
+    $query->where('is_approved', true);
+}])->get();
+```
+
+## Deferred Bindings
+
+Deferred bindings allow relations and file attachments to be linked to a model before it is saved. This is how October CMS forms handle relations and file uploads on create forms (where the model doesn't exist yet).
+
+```php
+// Generate a session key (forms provide this automatically)
+$sessionKey = uniqid('session_key', true);
+
+// Defer-add a relation
+$post->comments()->add($comment, $sessionKey);
+
+// Defer-remove a relation
+$post->comments()->remove($comment, $sessionKey);
+
+// Query with deferred records included
+$post->comments()->withDeferred($sessionKey)->get();
+
+// Commit deferred bindings when saving
+$post->save(['sessionKey' => $sessionKey]);
+
+// Cancel all deferred bindings
+$post->cancelDeferred($sessionKey);
+```
+
+File uploads through the backend form widget automatically use deferred bindings - the session key is managed by the form behavior.
+
+## Extending Models
+
+Extend models from other plugins in your `boot()` method:
+
+```php
+\Acme\User\Models\User::extend(function ($model) {
+    // Add a relation
+    $model->hasMany['posts'] = \Acme\Blog\Models\Post::class;
+
+    // Add a dynamic method
+    $model->addDynamicMethod('getLatestPost', function () use ($model) {
+        return $model->posts()->orderBy('created_at', 'desc')->first();
+    });
+
+    // Add validation rules
+    $model->rules['phone'] = 'nullable|string';
+
+    // Listen to local events
+    $model->bindEvent('model.beforeSave', function () use ($model) {
+        // Modify model before save
+    });
+});
+```
+
 ## Dropdown Options
 
 Define options for form dropdowns on the model:
@@ -375,10 +461,13 @@ This is automatically used by `type: dropdown` fields in `fields.yaml` when the 
 
 - Use **array-based** relationship definitions (`$hasMany = [...]`), never Laravel's fluent methods (`$this->hasMany(...)`).
 - Table names use the `{author}_{plugin}_{plural}` convention (e.g., `acme_blog_posts`).
-- The `Validation` trait validates automatically on `save()` — you don't need to call `validate()` manually.
+- The `Validation` trait validates automatically on `save()` - you don't need to call `validate()` manually.
 - Use `$jsonable` for JSON columns, not `$casts = ['field' => 'array']`.
 - File attachments use `System\Models\File`, not any other file model.
 - Model events are method overrides (`beforeSave()`), not event listeners or closures.
 - The `$rules` property supports `:create` and `:update` context suffixes.
 - Always import the `Model` alias (`use Model;`), not the full `October\Rain\Database\Model` class directly.
 - Pivot table names for `belongsToMany` follow the convention `{author}_{plugin}_{model1}_{model2}` in alphabetical order.
+- `$casts` works for scalar types (`boolean`, `integer`, `datetime`) but use `$jsonable` for JSON columns, not `$casts = ['field' => 'array']`.
+- Deferred bindings are handled automatically by the form behavior - you rarely need to manage session keys manually.
+- Use `$model->bindEvent()` for local events and `\Event::listen()` for global events - they serve different purposes.

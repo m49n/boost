@@ -11,11 +11,24 @@ metadata:
 
 Use `php artisan create:plugin Acme.Blog` to scaffold a new plugin. This creates the directory structure and registration file.
 
-Additional scaffolding commands:
-- `php artisan create:model Acme.Blog Post` — model with migration
-- `php artisan create:controller Acme.Blog Posts` — backend controller
-- `php artisan create:component Acme.Blog BlogPost` — CMS component
-- `php artisan create:command Acme.Blog MyCommand` — artisan command
+All scaffolding commands follow the pattern `create:{type} Acme.Blog {Name}`:
+
+Command | Creates
+--- | ---
+`create:plugin Acme.Blog` | Plugin with registration file
+`create:model Acme.Blog Post` | Model with migration and YAML configs
+`create:controller Acme.Blog Posts` | Backend controller with views
+`create:component Acme.Blog BlogPost` | CMS component
+`create:command Acme.Blog MyCommand` | Console command
+`create:migration Acme.Blog AddStatusColumn` | Migration file
+`create:formwidget Acme.Blog MyWidget` | Custom form widget
+`create:filterwidget Acme.Blog MyFilter` | Custom filter widget
+`create:reportwidget Acme.Blog MyReport` | Dashboard report widget
+`create:contentfield Acme.Blog MyField` | Tailor content field
+`create:job Acme.Blog ProcessData` | Queue job class
+`create:factory Acme.Blog PostFactory` | Model factory
+`create:seeder Acme.Blog PostSeeder` | Database seeder
+`create:test Acme.Blog PostTest` | Test class
 
 ## Plugin Registration File
 
@@ -225,10 +238,193 @@ public function boot()
 }
 ```
 
+## Settings Model
+
+Plugin settings use `SettingModel` instead of a custom database table:
+
+```php
+namespace Acme\Blog\Models;
+
+class Settings extends \System\Models\SettingModel
+{
+    public $settingsCode = 'acme_blog_settings';
+    public $settingsFields = 'fields.yaml';
+}
+```
+
+The `fields.yaml` sits alongside the model in `models/settings/fields.yaml`.
+
+Reading and writing settings:
+
+```php
+// Read
+$value = Settings::get('api_key');
+$value = Settings::get('api_key', 'default');
+
+// Write
+Settings::set('api_key', 'ABCD');
+Settings::set(['api_key' => 'ABCD', 'enabled' => true]);
+
+// Instance access
+$settings = Settings::instance();
+$settings->api_key = 'ABCD';
+$settings->save();
+```
+
+Register in Plugin.php with `registerSettings()` (see above).
+
+## Event Listeners
+
+Register event listeners in the `boot()` method:
+
+```php
+public function boot()
+{
+    // Global events
+    \Event::listen('backend.form.extendFields', function ($widget) {
+        if (!$widget->getController() instanceof \Acme\User\Controllers\Users) {
+            return;
+        }
+
+        $widget->addFields([
+            'phone' => [
+                'label' => 'Phone',
+                'type' => 'text',
+            ],
+        ]);
+    });
+
+    \Event::listen('backend.list.extendColumns', function ($widget) {
+        if (!$widget->getController() instanceof \Acme\User\Controllers\Users) {
+            return;
+        }
+
+        $widget->addColumns([
+            'phone' => ['label' => 'Phone'],
+        ]);
+    });
+
+    // Local model events
+    \Acme\User\Models\User::extend(function ($model) {
+        $model->bindEvent('model.afterSave', function () use ($model) {
+            // React to user save
+        });
+    });
+}
+```
+
+Common events:
+- `backend.form.extendFields` - add/remove form fields
+- `backend.form.extendFieldsBefore` - modify field config before rendering
+- `backend.list.extendColumns` - add/remove list columns
+- `backend.filter.extendScopes` - add/remove filter scopes
+- `system.extendConfigFile` - modify config values
+- `cms.page.beforeDisplay` - before a CMS page renders
+- Fire custom events: `Event::fire('acme.blog.afterPublish', [$post])`
+
+## Console Commands
+
+Create a command with `php artisan create:command Acme.Blog MyCommand`:
+
+```php
+namespace Acme\Blog\Console;
+
+use Illuminate\Console\Command;
+
+class MyCommand extends Command
+{
+    protected $signature = 'acme:sync-posts {--force}';
+
+    protected $description = 'Synchronize blog posts.';
+
+    public function handle()
+    {
+        if ($this->option('force')) {
+            $this->info('Force syncing...');
+        }
+
+        $this->info('Done.');
+    }
+}
+```
+
+Register in Plugin.php:
+
+```php
+public function register()
+{
+    $this->registerConsoleCommand('acme.syncposts', \Acme\Blog\Console\MyCommand::class);
+}
+```
+
+## Localization
+
+Language strings use JSON files in `lang/`:
+
+```
+plugins/acme/blog/lang/
+├── en.json
+└── fr.json
+```
+
+JSON format:
+
+```json
+{
+    "Manage Posts": "Manage Posts",
+    ":name created a post": ":name created a post"
+}
+```
+
+Access strings:
+
+```php
+echo __('Manage Posts');
+echo __(':name created a post', ['name' => 'Jeff']);
+```
+
+Pluralization:
+
+```json
+{
+    "There is one post|There are many posts": "There is one post|There are many posts"
+}
+```
+
+## Mail Templates
+
+Mail views use a three-section format (subject, plain text, HTML) in `views/mail/`:
+
+```
+subject = "New post published: {{ title }}"
+==
+A new post "{{ title }}" was published on {{ site_name }}.
+==
+<p>A new post <strong>{{ title }}</strong> was published on {{ site_name }}.</p>
+```
+
+Sending mail:
+
+```php
+$vars = ['title' => $post->title, 'site_name' => 'My Blog'];
+
+\Mail::send('acme.blog::mail.post-notification', $vars, function ($message) {
+    $message->to('admin@example.com');
+});
+
+// Quick send
+\Mail::sendTo('admin@example.com', 'acme.blog::mail.post-notification', $vars);
+```
+
+Register templates in Plugin.php with `registerMailTemplates()` (see above).
+
 ## Common Pitfalls
 
 - Always use `PluginBase` not Laravel's `ServiceProvider` for plugin registration.
-- The `register()` method runs before all plugins are loaded — do not reference other plugins here; use `boot()` instead.
-- Table names must be globally unique — always prefix with author and plugin name.
-- Never modify migrations that have run in production — create new migration files instead.
+- The `register()` method runs before all plugins are loaded - do not reference other plugins here; use `boot()` instead.
+- Table names must be globally unique - always prefix with author and plugin name.
+- Never modify migrations that have run in production - create new migration files instead.
 - The `$require` array uses dot notation (`Acme.Blog`), not namespace notation.
+- Settings models do not need a migration - they store data automatically in the `system_settings` table.
+- Always check the controller/model type in event listeners to avoid extending the wrong form or list.
+- Console commands need both a class and registration via `registerConsoleCommand()` in `register()` (not `boot()`).

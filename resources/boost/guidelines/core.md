@@ -4,21 +4,21 @@ This application uses **October CMS**, a Laravel-based content management system
 
 ## Critical Differences from Laravel
 
-- **Do not suggest** Livewire, Inertia.js, Blade components, or Laravel Folio — October CMS has its own frontend architecture.
-- **Do not suggest** Laravel form requests for validation — October uses model-based validation via the `Validation` trait.
-- **Do not suggest** Laravel controllers with route model binding — October uses backend controllers with behaviors.
-- **Do not suggest** `resources/views/` Blade templates — October uses Twig-based CMS themes in the `themes/` directory and PHP-based partials in `controllers/` and `models/` directories.
-- **Do not use** `php artisan make:model` or `php artisan make:controller` — October has its own scaffolding commands: `php artisan create:plugin`, `php artisan create:model`, `php artisan create:controller`, `php artisan create:component`.
+- **Do not suggest** Livewire, Inertia.js, Blade components, or Laravel Folio - October CMS has its own frontend architecture.
+- **Do not suggest** Laravel form requests for validation - October uses model-based validation via the `Validation` trait.
+- **Do not suggest** Laravel controllers with route model binding - October uses backend controllers with behaviors.
+- **Do not suggest** `resources/views/` Blade templates - October uses Twig-based CMS themes in the `themes/` directory and PHP-based partials in `controllers/` and `models/` directories.
+- **Do not use** `php artisan make:model` or `php artisan make:controller` - October has its own scaffolding commands: `php artisan create:plugin`, `php artisan create:model`, `php artisan create:controller`, `php artisan create:component`.
 
 ## Architecture Overview
 
 October CMS is built on these pillars:
 
-- **Plugins** — modular packages in `plugins/{author}/{name}/` that extend the CMS. Each has a `Plugin.php` registration file extending `PluginBase`.
-- **Themes** — file-based frontend templates in `themes/{name}/` using Twig markup with pages, layouts, partials, and content files.
-- **Backend** — admin panel powered by controller behaviors (FormController, ListController, RelationController) with YAML-driven configuration.
-- **Tailor** — headless CMS feature using YAML blueprints to define content structures without writing code.
-- **AJAX Framework** — built-in AJAX system using `data-request` attributes or the `jax` JavaScript API to call server-side handlers.
+- **Plugins** - modular packages in `plugins/{author}/{name}/` that extend the CMS. Each has a `Plugin.php` registration file extending `PluginBase`.
+- **Themes** - file-based frontend templates in `themes/{name}/` using Twig markup with pages, layouts, partials, and content files.
+- **Backend** - admin panel powered by controller behaviors (FormController, ListController, RelationController) with YAML-driven configuration.
+- **Tailor** - headless CMS feature using YAML blueprints to define content structures without writing code.
+- **AJAX Framework** - built-in AJAX system using `data-request` attributes or the `jax` JavaScript API to call server-side handlers.
 
 ## Plugin Structure
 
@@ -132,15 +132,74 @@ function onSubmit()
 }
 ```
 
+## Event System
+
+October CMS uses a global event system for extensibility. Events are fired with `Event::fire()` and listened to with `Event::listen()`. Register listeners in Plugin `boot()` method:
+
+```php
+public function boot()
+{
+    \Event::listen('backend.form.extendFields', function ($widget) {
+        // Extend form fields
+    });
+}
+```
+
+Common event patterns:
+- `backend.form.extendFields` - extend backend forms
+- `backend.list.extendColumns` - extend backend lists
+- `backend.filter.extendScopes` - extend list filters
+- `model.beforeSave` / `model.afterSave` - model lifecycle (use local events via `$model->bindEvent()`)
+- Use `Event::fire('acme.blog.eventName', [$arg1])` for custom events
+
+Models also support local events via the Emitter trait:
+
+```php
+$model->bindEvent('model.afterSave', function () use ($model) {
+    // Respond to save
+});
+```
+
+## Settings Models
+
+Plugin settings use `SettingModel` - not custom database tables:
+
+```php
+class Settings extends \System\Models\SettingModel
+{
+    public $settingsCode = 'acme_blog_settings';
+    public $settingsFields = 'fields.yaml';
+}
+```
+
+Read/write: `Settings::get('key')`, `Settings::set('key', 'value')`.
+
 ## Artisan Commands
 
-- `php artisan create:plugin Acme.Blog` — scaffold a new plugin
-- `php artisan create:model Acme.Blog Post` — scaffold a new model
-- `php artisan create:controller Acme.Blog Posts` — scaffold a new controller
-- `php artisan create:component Acme.Blog Post` — scaffold a new component
-- `php artisan october:migrate` — run all plugin migrations
-- `php artisan october:fresh` — destroy and recreate the database
-- `php artisan plugin:refresh Acme.Blog` — refresh a plugin's migrations
+### Scaffolding
+
+Command | Description
+--- | ---
+`create:plugin Acme.Blog` | New plugin with registration file
+`create:model Acme.Blog Post` | Model with migration and YAML configs
+`create:controller Acme.Blog Posts` | Backend controller with views
+`create:component Acme.Blog BlogPost` | CMS component
+`create:command Acme.Blog MyCommand` | Console command
+`create:migration Acme.Blog AddStatusColumn` | Migration file
+`create:formwidget Acme.Blog MyWidget` | Custom form widget
+`create:filterwidget Acme.Blog MyFilter` | Custom filter widget
+`create:reportwidget Acme.Blog MyReport` | Dashboard report widget
+`create:contentfield Acme.Blog MyField` | Tailor content field
+`create:job Acme.Blog ProcessData` | Queue job class
+`create:factory Acme.Blog PostFactory` | Model factory
+`create:seeder Acme.Blog PostSeeder` | Database seeder
+`create:test Acme.Blog PostTest` | Test class
+
+### System
+
+- `php artisan october:migrate` - run all plugin migrations
+- `php artisan october:fresh` - delete the demo theme and start fresh
+- `php artisan plugin:refresh Acme.Blog` - refresh a plugin's migrations
 
 ## Conventions
 

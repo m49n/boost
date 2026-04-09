@@ -13,26 +13,20 @@ class ServiceProvider extends ServiceProviderBase
      */
     public function register(): void
     {
-        //
+        $this->mergeTools();
     }
 
     /**
-     * boot the service provider.
+     * mergeTools registers October CMS MCP tools with Laravel Boost.
      */
-    public function boot(): void
+    protected function mergeTools(): void
     {
-        if ($this->app->runningInConsole()) {
-            $this->registerToolConfiguration();
-        }
-    }
+        $existing = $this->app['config']->get('boost.mcp.tools.include', []);
 
-    /**
-     * registerToolConfiguration publishes the Boost MCP tool configuration.
-     */
-    protected function registerToolConfiguration(): void
-    {
-        $this->publishes([
-            __DIR__.'/../config/october-boost.php' => config_path('october-boost.php'),
-        ], 'october-boost-config');
+        $this->app['config']->set('boost.mcp.tools.include', array_merge($existing, [
+            \October\Boost\Tools\GetBlueprints::class,
+            \October\Boost\Tools\GetPluginRegistration::class,
+            \October\Boost\Tools\GetThemeStructure::class,
+        ]));
     }
 }

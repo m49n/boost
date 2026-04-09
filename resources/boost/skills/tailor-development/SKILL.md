@@ -253,12 +253,73 @@ fields:
             - max:150
 ```
 
+## Multisite with Tailor
+
+Blueprints support multisite for managing content across different sites or locales:
+
+```yaml
+handle: Blog\Post
+type: stream
+name: Blog Post
+multisite: sync
+
+fields:
+    title:
+        label: Title
+        type: text
+```
+
+Multisite values:
+- `sync` - record is shared across all sites, editable from any site
+- `all` - record exists in all sites with independent content
+- `locale` - record exists per locale with independent content
+- `group` - record exists per site group with independent content
+
+## Blueprint Navigation
+
+Blueprints can define primary and secondary navigation:
+
+```yaml
+primaryNavigation:
+    label: Blog
+    icon: icon-pencil
+    order: 200
+
+secondaryNavigation:
+    posts:
+        label: Posts
+        icon: icon-file-text
+    categories:
+        label: Categories
+        icon: icon-folder
+```
+
+## Blueprint Columns
+
+Customize the backend list view for a blueprint:
+
+```yaml
+columns:
+    title:
+        label: Title
+        type: text
+        searchable: true
+    category:
+        label: Category
+        relation: category
+        select: title
+    is_enabled:
+        label: Enabled
+        type: switch
+```
+
 ## Common Pitfalls
 
 - Blueprint handles must be globally unique across the application.
 - The `handle` uses backslash notation (`Blog\Post`), not dot notation.
-- Use `entries` field type for relations between Tailor records, not `relation`.
-- Tailor auto-generates database tables — you do not write migrations.
+- Use `entries` field type for relations between Tailor entries, not `relation`.
+- Tailor auto-generates database tables - you do not write migrations.
 - Changes to blueprint fields may require running `php artisan october:migrate` to update the database schema.
-- Global blueprints have only one record — query with `->first()`.
+- Global blueprints have only one record - query with `->first()`.
 - Use `drafts: true` on the blueprint to enable draft/publish workflow.
+- The `multisite` property on blueprints controls content sharing - omitting it means the content is site-specific by default.

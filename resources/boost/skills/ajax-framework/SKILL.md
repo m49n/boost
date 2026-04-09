@@ -20,7 +20,7 @@ Add the framework to your layout:
 
 ## Data Attributes API
 
-The simplest way to make AJAX requests — no JavaScript required:
+The simplest way to make AJAX requests - no JavaScript required:
 
 ### Basic Request
 
@@ -345,6 +345,44 @@ With `{% framework extras turbo %}`, page navigation becomes AJAX-powered (like 
 
 This intercepts link clicks and form submissions, loading pages without full browser refreshes.
 
+## File Uploads via AJAX
+
+Upload files using a standard form with `files: true` in the JavaScript API:
+
+```js
+jax.request('#uploadForm', 'onUpload', {
+    files: true
+});
+```
+
+Or with data attributes using `enctype`:
+
+```html
+<form data-request="onUpload" enctype="multipart/form-data">
+    <input type="file" name="attachment" />
+    <button type="submit">Upload</button>
+</form>
+```
+
+Handle the upload in PHP:
+
+```php
+function onUpload()
+{
+    $file = \Input::file('attachment');
+
+    $model = new \System\Models\File;
+    $model->data = $file;
+    $model->save();
+
+    // Attach to a model
+    $post = Post::find(input('post_id'));
+    $post->featured_image()->add($model);
+}
+```
+
+Note: The backend `fileupload` form widget handles file uploads automatically via deferred bindings - you don't need to write AJAX handlers for standard form file fields.
+
 ## Common Pitfalls
 
 - Handler names must start with `on` (e.g., `onSubmit`, `onLoadMore`).
@@ -354,4 +392,4 @@ This intercepts link clicks and form submissions, loading pages without full bro
 - The `{% framework %}` tag must be present in the layout for AJAX to work.
 - Partial names in `data-request-update` do not include the `.htm` extension.
 - Use `$this->makePartial()` in PHP handlers when returning partial markup manually.
-- The generic `onAjax` handler is available everywhere without defining it — useful for updating partials without server logic.
+- The generic `onAjax` handler is available everywhere without defining it - useful for updating partials without server logic.

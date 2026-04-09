@@ -38,9 +38,9 @@ themes/mytheme/
 
 CMS templates (pages, layouts, partials) have up to three sections separated by `==`:
 
-1. **Configuration** (INI format) — template parameters
-2. **PHP code** (optional) — server-side logic
-3. **Twig markup** — the rendered HTML
+1. **Configuration** (INI format) - template parameters
+2. **PHP code** (optional) - server-side logic
+3. **Twig markup** - the rendered HTML
 
 ```
 url = "/blog"
@@ -112,13 +112,13 @@ description = "Default layout"
 ```
 
 Key Twig tags:
-- `{% page %}` — renders the page content
-- `{% partial "name" %}` — renders a partial
-- `{% content "name.md" %}` — renders a content block
-- `{% styles %}` — outputs registered CSS
-- `{% scripts %}` — outputs registered JS
-- `{% framework %}` — includes the AJAX framework
-- `{% framework extras %}` — includes AJAX framework with extras (validation, loading indicators, flash messages)
+- `{% page %}` - renders the page content
+- `{% partial "name" %}` - renders a partial
+- `{% content "name.md" %}` - renders a content block
+- `{% styles %}` - outputs registered CSS
+- `{% scripts %}` - outputs registered JS
+- `{% framework %}` - includes the AJAX framework
+- `{% framework extras %}` - includes AJAX framework with extras (validation, loading indicators, flash messages)
 
 ## Partials
 
@@ -230,7 +230,7 @@ class BlogPosts extends ComponentBase
     }
 
     /**
-     * AJAX handler — called via data-request="onLoadMore"
+     * AJAX handler - called via data-request="onLoadMore"
      */
     public function onLoadMore()
     {
@@ -338,11 +338,110 @@ function onStart()
 
 Variables set with `$this['name'] = value` become available in Twig as `{{ name }}`.
 
+## Theme Configuration (theme.yaml)
+
+The `theme.yaml` file defines theme metadata and optional backend customization fields:
+
+```yaml
+name: My Theme
+description: A custom theme
+author: Acme
+homepage: https://example.com
+
+form:
+    fields:
+        site_name:
+            label: Site Name
+            type: text
+            default: My Website
+        logo:
+            label: Logo
+            type: fileupload
+            mode: image
+        primary_color:
+            label: Primary Color
+            type: colorpicker
+            default: '#3498db'
+```
+
+Access theme customization values in Twig:
+
+```twig
+<h1>{{ this.theme.site_name }}</h1>
+<img src="{{ this.theme.logo.path }}" />
+```
+
+## Error Pages
+
+Create error pages by naming them with the HTTP status code:
+
+```
+pages/
+├── error.htm       - Generic error page (fallback)
+├── 404.htm         - Not Found
+├── 500.htm         - Server Error
+└── 503.htm         - Service Unavailable
+```
+
+Error page configuration:
+
+```ini
+url = "/404"
+layout = "default"
+title = "Page Not Found"
+is_hidden = 1
+```
+
+## Passing Data Between Layout and Page
+
+Layouts and pages share the same controller instance. Data set in the layout's PHP section is available in the page:
+
+```php
+// In layout onStart()
+function onStart()
+{
+    $this['siteSettings'] = \Acme\Blog\Models\Settings::instance();
+}
+```
+
+```twig
+{# Available in any page using this layout #}
+{{ siteSettings.site_name }}
+```
+
+Pages can also set data for the layout using placeholders:
+
+```twig
+{# In page #}
+{% put sidebar %}
+    <div class="sidebar-content">Custom sidebar</div>
+{% endput %}
+
+{# In layout #}
+{% placeholder sidebar %}
+    <div>Default sidebar</div>
+{% endplaceholder %}
+```
+
+## Asset Compilation
+
+Combine and minify assets using the `|theme` filter and asset combiner:
+
+```twig
+<link href="{{ 'assets/css/style.css'|theme }}" rel="stylesheet" />
+<script src="{{ 'assets/js/app.js'|theme }}"></script>
+
+{# Combine multiple files #}
+<link href="{{ ['assets/css/reset.css', 'assets/css/style.css']|theme }}" rel="stylesheet" />
+```
+
 ## Common Pitfalls
 
 - Template paths are always absolute from the theme root, even when in a subdirectory: `{% partial "blog/post-card" %}` not `{% partial "post-card" %}`.
-- The PHP section only allows function definitions and `use` statements — no loose code.
+- The PHP section only allows function definitions and `use` statements - no loose code.
 - Use `{{ variable|raw }}` for HTML content, `{{ variable }}` auto-escapes.
 - Component aliases in the INI section become the variable name in Twig.
-- Pages must have a `url` property — it cannot be empty.
+- Pages must have a `url` property - it cannot be empty.
 - The `{% framework %}` tag is required for AJAX functionality to work.
+- Error pages should use `is_hidden = 1` to hide them from CMS page lists.
+- Theme customization values are accessed via `this.theme.field_name` in Twig, not `this.page`.

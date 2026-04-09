@@ -26,29 +26,32 @@ php artisan boost:install
 
 During installation, select **october/boost** when prompted to include third-party guidelines.
 
+MCP tools are registered automatically - no manual configuration needed.
+
 ## What's Included
 
 ### Guidelines
 
-A core guideline file that teaches AI agents the fundamental differences between October CMS and standard Laravel:
+A core guideline file loaded into every AI conversation that covers:
 
-- Don't suggest Livewire, Inertia, or Blade components
-- Use array-based model relationships, not fluent methods
-- Use October's scaffolding commands, not Laravel's
-- Follow October's plugin, theme, and backend conventions
+- Critical differences from Laravel (don't suggest Livewire, Inertia, Blade, etc.)
+- Architecture overview (plugins, themes, backend, Tailor, AJAX)
+- Model conventions (array-based relationships, Validation trait)
+- Event system and settings model patterns
+- Artisan commands and naming conventions
 
 ### Skills
 
 On-demand knowledge modules that AI agents activate when working in specific domains:
 
-Skill | Activates When
+Skill | Covers
 --- | ---
-`octobercms-plugin-development` | Creating/modifying plugins, Plugin.php, migrations, registration
-`octobercms-tailor-development` | Working with Tailor blueprints, content fields, entry records
-`octobercms-backend-controllers` | Building backend pages with FormController, ListController, RelationController
-`octobercms-theme-development` | Creating themes, pages, layouts, partials, Twig templates, CMS components
-`octobercms-ajax-framework` | Using data-request attributes, jax API, AJAX handlers, partial updates
-`octobercms-model-development` | Defining models, relationships, validation, traits, events
+`octobercms-plugin-development` | Plugin.php, registration, migrations, settings models, events, console commands, localization, mail templates
+`octobercms-tailor-development` | Blueprints, content fields, entry records, multisite, navigation, columns
+`octobercms-backend-controllers` | Form/List/Relation/Import-Export/Reorder controllers, behavior overrides, filter scopes, YAML configs
+`octobercms-theme-development` | Pages, layouts, partials, Twig, components, theme.yaml customization, error pages, asset compilation
+`octobercms-ajax-framework` | Data attributes, jax API, handlers, partial updates, file uploads, validation, turbo router
+`octobercms-model-development` | Relationships, validation, traits, events, accessors/mutators, deferred bindings, eager loading, extending models
 
 ### MCP Tools
 
@@ -60,27 +63,13 @@ Tool | Purpose
 `GetPluginRegistration` | List plugins with their components, permissions, navigation
 `GetThemeStructure` | Inspect the active theme's pages, layouts, and partials
 
-To register the MCP tools, add them to your `config/boost.php`:
-
-```php
-'mcp' => [
-    'tools' => [
-        'include' => [
-            \October\Boost\Tools\GetBlueprints::class,
-            \October\Boost\Tools\GetPluginRegistration::class,
-            \October\Boost\Tools\GetThemeStructure::class,
-        ],
-    ],
-],
-```
-
 ## How It Works
 
 October CMS Boost uses Laravel Boost's extension system:
 
-- **Guidelines** are auto-discovered from `resources/boost/guidelines/` — no configuration needed.
-- **Skills** are auto-discovered from `resources/boost/skills/` — AI agents activate them on-demand when the task matches.
-- **MCP Tools** are registered via `config/boost.php` and provide live introspection of your October CMS application.
+- **Guidelines** are auto-discovered from `resources/boost/guidelines/` - no configuration needed.
+- **Skills** are auto-discovered from `resources/boost/skills/` - AI agents activate them on-demand when the task matches.
+- **MCP Tools** are auto-registered via the service provider - they appear alongside Laravel Boost's built-in tools.
 
 ## License
 
