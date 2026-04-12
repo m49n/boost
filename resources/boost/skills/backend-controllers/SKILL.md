@@ -1,6 +1,6 @@
 ---
 name: octobercms-backend-controllers
-description: "Use when creating, modifying, or debugging October CMS backend controllers, including form controllers, list controllers, relation controllers, import/export controllers, or reorder controllers. Activate when working with config_form.yaml, config_list.yaml, config_relation.yaml, fields.yaml, columns.yaml, scopes.yaml, controller views, toolbar partials, or any backend page behavior. Do not use for CMS theme pages or frontend components."
+description: "Use when creating, modifying, or debugging October CMS backend controllers, including form controllers, list controllers, relation controllers, import/export controllers, or list structures. Activate when working with config_form.yaml, config_list.yaml, config_relation.yaml, fields.yaml, columns.yaml, scopes.yaml, controller views, toolbar partials, or any backend page behavior. Do not use for CMS theme pages or frontend components."
 license: MIT
 metadata:
   author: octobercms
@@ -52,7 +52,6 @@ Behavior | Purpose | Config Property
 `FormController` | Create, update, preview forms | `$formConfig`
 `ListController` | Sortable, searchable record lists | `$listConfig`
 `RelationController` | Manage model relationships in forms | `$relationConfig`
-`ReorderController` | Drag-and-drop record reordering | `$reorderConfig`
 `ImportExportController` | CSV import and export | `$importExportConfig`
 
 ## List Configuration (config_list.yaml)
@@ -458,20 +457,73 @@ class SubscriberExport extends \Backend\Models\ExportModel
 </div>
 ```
 
-## Reorder Controller
+## List Structure (Sorting & Reordering)
 
-### Configuration (config_reorder.yaml)
+The `ListController` supports a **structure** property in `config_list.yaml` to enable drag-and-drop sorting and tree reordering. This replaces the deprecated `ReorderController`.
+
+### Configuration (config_list.yaml)
 
 ```yaml
-title: Reorder Categories
-modelClass: Acme\Blog\Models\Category
-nameFrom: title
+# ... existing list config ...
+
+structure:
+    showTree: true
+    showReorder: true
+    showSorting: false
+    maxDepth: 2
 ```
 
-The model must use the `Sortable` or `NestedTree` trait. The controller view:
+Property | Description
+--- | ---
+**showTree** | Displays a tree hierarchy for parent/child records. Default: `true`
+**treeExpanded** | If tree nodes should be expanded by default. Default: `true`
+**showReorder** | Displays an interface for reordering records. Default: `true`
+**showSorting** | Allows sorting records, disables the structure when sorted. Default: `true`
+**maxDepth** | Defines the maximum levels allowed for reordering. Default: `null`
+**dragRow** | Allow dragging the entire row in addition to the reorder handle. Default: `true`
+**permissions** | Permissions the current backend user must have to modify the structure.
+
+### Supported Model Traits
+
+The model must use one of these traits depending on requirements:
+
+- `NestedTree` - for fixed parent-child structures with specific ordering
+- `SimpleTree` - for basic parent-child relationships
+- `Sortable` - for flat list ordering without tree hierarchy
 
 ```php
-<?= $this->reorderRender() ?>
+class Category extends Model
+{
+    use \October\Rain\Database\Traits\NestedTree;
+}
+```
+
+### Sorting Related Records
+
+The `RelationController` also supports the **structure** property. For `belongsToMany` relations, use the `SortableRelation` trait with `pivotSortable`:
+
+```php
+class User extends Model
+{
+    use \October\Rain\Database\Traits\SortableRelation;
+
+    public $belongsToMany = [
+        'roles' => [
+            Role::class,
+            'table' => 'users_roles',
+            'pivotSortable' => 'sort_order',
+        ]
+    ];
+}
+```
+
+```yaml
+# config_relation.yaml
+roles:
+    # ...
+    structure:
+        showReorder: true
+        showTree: false
 ```
 
 ## Additional Filter Scope Types
