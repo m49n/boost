@@ -60,35 +60,70 @@ Attribute | Description
 `data-request-update` | Partials to update: `{ partial: '#selector' }`
 `data-request-confirm` | Confirmation message before sending
 `data-request-redirect` | Redirect URL after success
+`data-request-url` | Custom URL for the request (default: current page)
+`data-request-data` | Extra data to send: `{ key: 'value' }`
+`data-request-query` | Additional GET parameters for the URL query string
+`data-request-form` | CSS selector of form to serialize (when outside a form)
 `data-request-loading` | CSS selector of element to show during request
+`data-request-message` | Progress message text to display during request
+`data-request-progress-bar` | Enable the progress bar during request
+`data-request-flash` | Enable flash messages from the server
+`data-request-files` | Accept file uploads using FormData
+`data-request-download` | Enable file download response
+`data-request-bulk` | Send request as JSON for bulk data transactions
+`data-request-before-update` | JavaScript to execute before partials are updated
 `data-request-success` | JavaScript to execute on success
 `data-request-error` | JavaScript to execute on error
 `data-request-complete` | JavaScript to execute on completion (success or error)
-`data-request-data` | Extra data to send: `{ key: 'value' }`
-`data-request-form` | CSS selector of form to serialize (when outside a form)
-`data-request-flash` | Enable flash messages from the server
-`data-request-before-update` | JavaScript to execute before partials are updated
-`data-request-download` | Enable file download response
-`data-track-input` | Auto-submit on input change (with debounce)
+`data-request-cancel` | JavaScript to execute if request is aborted/cancelled
+`data-request-poll` | Auto-trigger AJAX at intervals (optional milliseconds value)
+`data-track-input` | Auto-submit on input change (with optional debounce)
+`data-browser-validate` | Enable browser-based client-side validation
+`data-browser-target` | Window target for downloads (e.g., `_blank`)
+`data-browser-redirect-back` | Use previous browser URL instead of redirect URL
 
-### Prepend and Append
+### Selector Prefixes for Partial Updates
 
-Use `@` prefix to prepend or append instead of replacing:
+Use prefixes on CSS selectors in `data-request-update`:
 
 ```html
-<!-- Append to the list -->
+<!-- Replace element content (default) -->
+data-request-update="{ 'list-item': '#itemList' }"
+
+<!-- Append to the element -->
 data-request-update="{ 'list-item': '@#itemList' }"
 
-<!-- Prepend to the list -->
+<!-- Prepend to the element -->
 data-request-update="{ 'list-item': '^#itemList' }"
+
+<!-- Replace the entire element (not just contents) -->
+data-request-update="{ 'list-item': '!#itemList' }"
+
+<!-- Use a custom CSS selector -->
+data-request-update="{ 'list-item': '=[data-field-name=address]' }"
 ```
 
-### Self-Updating Partials
+### Self-Updating Partials with ajaxPartial
 
-Use `#` to refer to the partial's own container:
+Use the `{% ajaxPartial %}` tag to create self-updating partials:
+
+```twig
+{% ajaxPartial 'mytime' %}
+    The time is {{ 'now'|date('H:i:s') }}
+    <button data-request="onRefreshTime" data-request-update="{ _self: true }">
+        Refresh
+    </button>
+{% endajaxPartial %}
+```
+
+Update using `{ _self: true }` or `{ mytime: true }` (the partial name).
+
+### Global Partial Updates
+
+Use a meta tag to merge an update definition with every AJAX request:
 
 ```html
-data-request-update="{ 'self': '#' }"
+<meta name="ajax-request-update" content="{ flash-messages: true }" />
 ```
 
 ## JavaScript API
@@ -106,10 +141,10 @@ jax.ajax('onDoSomething');
 ```js
 jax.request('#myForm', 'onSubmit', {
     update: { result: '#resultDiv' },
-    success: function(data) {
+    success: function(data, responseCode, xhr) {
         console.log('Done', data);
     },
-    error: function(data) {
+    error: function(data, responseCode, xhr) {
         console.log('Error', data);
     }
 });
@@ -130,16 +165,58 @@ Option | Description
 --- | ---
 `update` | Object mapping partials to selectors
 `data` | Extra data to send
-`success` | Success callback function
-`error` | Error callback function
-`complete` | Completion callback function
+`query` | Object with additional GET query string parameters
+`headers` | Object with custom request headers
+`success` | Success callback `function(data, responseCode, xhr)`
+`error` | Error callback `function(data, responseCode, xhr)`
+`complete` | Completion callback (success or error)
+`cancel` | Callback if user aborts/cancels
+`beforeUpdate` | Callback before page elements are updated
+`afterUpdate` | Callback after page elements are updated
 `confirm` | Confirmation message string
 `redirect` | Redirect URL on success
 `loading` | Loading indicator selector
+`message` | Progress message text
+`progressBar` | Enable progress bar (boolean)
 `form` | Form element to serialize
 `flash` | Enable flash messages (boolean)
+`files` | Accept file uploads (boolean)
 `download` | Enable file download (boolean or filename)
+`bulk` | Send as JSON for bulk transactions (boolean)
 `browserValidate` | Enable browser validation (boolean)
+`browserRedirectBack` | Use previous browser URL on redirect (boolean)
+
+### Logic Handler Overrides
+
+Override default behaviors globally on the `jax` object:
+
+```js
+jax.handleConfirmMessage = function(message, promise) { /* custom confirm */ };
+jax.handleErrorMessage = function(message) { /* custom error display */ };
+jax.handleValidationMessage = function(message, fields) { /* custom validation */ };
+jax.handleFlashMessage = function(message, type) { /* custom flash */ };
+jax.handleRedirectResponse = function(url) { /* custom redirect */ };
+```
+
+### Global AJAX Events
+
+Events fired during the AJAX lifecycle:
+
+Event | Fires On | Description
+--- | --- | ---
+`ajax:before-send` | window | Before request is sent
+`ajax:before-update` | form | After response, before page update
+`ajax:update` | updated element | After a single element is updated
+`ajax:update-complete` | window | After all elements are updated
+`ajax:request-success` | form | After successful request
+`ajax:request-error` | form | If request encounters error
+`ajax:error-message` | window | When error message is available
+`ajax:confirm-message` | window | When confirmation is requested
+`ajax:setup` | trigger element | Before request is formed
+`ajax:promise` | trigger element | Directly before AJAX is sent
+`ajax:fail` | trigger element | If AJAX fails
+`ajax:done` | trigger element | If AJAX succeeds
+`ajax:always` | trigger element | Regardless of success/failure
 
 ## Writing AJAX Handlers
 
@@ -200,6 +277,21 @@ class Posts extends \Backend\Classes\Controller
 }
 ```
 
+### Handler Priority
+
+If handlers with the same name exist in multiple locations, the page handler takes priority over layout, and layout over component handlers.
+
+### Pre-Handler Code
+
+Use `onInit` in page/layout PHP or `init()` in components to run code before every AJAX handler:
+
+```php
+function onInit()
+{
+    // Runs before every AJAX handler on this page
+}
+```
+
 ## Handler Responses
 
 ### Returning Data
@@ -223,11 +315,24 @@ Access in JavaScript:
 
 ### Partial Updates from PHP
 
+In CMS pages/components, use `renderPartial`:
+
 ```php
 function onUpdateList()
 {
     $this['items'] = Item::all();
 
+    return [
+        '#itemList' => $this->renderPartial('item-list'),
+    ];
+}
+```
+
+In backend controllers, use `makePartial`:
+
+```php
+public function onUpdateList()
+{
     return [
         '#itemList' => $this->makePartial('item-list'),
     ];
@@ -262,7 +367,7 @@ Display flash messages in Twig:
 
 ```twig
 {% flash %}
-    <p data-dismiss="flash" class="flash-{{ type }}">
+    <p class="flash-{{ type }}">
         {{ message }}
     </p>
 {% endflash %}
@@ -287,6 +392,8 @@ addEventListener('profile:updated', function (event) {
 });
 ```
 
+Events are triggered after the request completes and before partials are updated. Call `event.preventDefault()` to prevent partial updates.
+
 ### Throwing AJAX Exceptions
 
 ```php
@@ -298,6 +405,8 @@ function onValidate()
     ]);
 }
 ```
+
+Note: When throwing `AjaxException`, partials will still be updated as normal.
 
 ## Form Validation
 
@@ -335,19 +444,101 @@ With `{% framework extras %}`, a loading indicator is shown automatically during
 <span id="spinner" style="display: none">Loading...</span>
 ```
 
-## Turbo Router
+## Turbo Router (PJAX)
 
-With `{% framework extras turbo %}`, page navigation becomes AJAX-powered (like Turbo/Pjax):
+With `{% framework extras %}`, page navigation can be AJAX-powered (turbo router is included). Enable it per-page with a meta tag:
 
-```twig
-{% framework extras turbo %}
+```html
+<meta name="turbo-visit-control" content="enable" />
 ```
 
-This intercepts link clicks and form submissions, loading pages without full browser refreshes.
+### Programmatic Navigation
+
+```js
+jax.visit('/new-page');
+jax.visit('/new-page', { action: 'replace' });  // Replace history, no back
+jax.useTurbo();  // Check if turbo is enabled
+```
+
+### Disabling for Specific Links
+
+```html
+<a href="/external" data-turbo="false">Skip PJAX</a>
+<div data-turbo="false">
+    <a href="/link" data-turbo="true">Re-enable inside disabled container</a>
+</div>
+```
+
+### Page Caching
+
+```html
+<meta name="turbo-cache-control" content="no-cache" />     <!-- Disable caching -->
+<meta name="turbo-cache-control" content="no-preview" />   <!-- No preview on back/forward -->
+```
+
+### Preserving Elements Across Navigations
+
+```html
+<div id="player" data-turbo-permanent>
+    <!-- This element persists across page navigations -->
+</div>
+```
+
+### Script Loading
+
+```html
+<script data-turbo-eval="false">/* Only on first load */</script>
+<script data-turbo-eval-once="analytics">/* Run once across all navigations */</script>
+```
+
+### Scroll Control
+
+```html
+<a href="/page" data-turbo-no-scroll>Preserve scroll position</a>
+```
+
+### Turbo Events
+
+Event | Description
+--- | ---
+`render` | Page updated via PJAX or AJAX
+`page:click` | Turbo link clicked
+`page:before-visit` | Before visiting (except browser history)
+`page:visit` | After clicked visit starts
+`page:request-start` | Before page request
+`page:request-end` | After page request
+`page:before-cache` | Before page is cached
+`page:before-render` | Before rendering (preventDefault to pause)
+`page:render` | After rendered (fires twice: cache + network)
+`page:load` | Once after initial + every visit
+`page:loaded` | Like page:load but waits for scripts
+`page:updated` | Like DOMContentLoaded for visits
+`page:unload` | When page is disposed (clean up here)
+
+### Ready Detection
+
+```js
+jax.pageReady().then(() => {
+    // Page is ready
+});
+
+jax.waitFor(() => window.myLibrary).then(() => {
+    // Library loaded
+});
+```
 
 ## File Uploads via AJAX
 
-Upload files using a standard form with `files: true` in the JavaScript API:
+Upload files using `data-request-files` or the JavaScript API:
+
+```html
+<form data-request="onUpload" data-request-files>
+    <input type="file" name="attachment" />
+    <button type="submit">Upload</button>
+</form>
+```
+
+Or with JavaScript:
 
 ```js
 jax.request('#uploadForm', 'onUpload', {
@@ -355,21 +546,12 @@ jax.request('#uploadForm', 'onUpload', {
 });
 ```
 
-Or with data attributes using `enctype`:
-
-```html
-<form data-request="onUpload" enctype="multipart/form-data">
-    <input type="file" name="attachment" />
-    <button type="submit">Upload</button>
-</form>
-```
-
 Handle the upload in PHP:
 
 ```php
 function onUpload()
 {
-    $file = \Input::file('attachment');
+    $file = request()->file('attachment');
 
     $model = new \System\Models\File;
     $model->data = $file;
@@ -383,6 +565,17 @@ function onUpload()
 
 Note: The backend `fileupload` form widget handles file uploads automatically via deferred bindings - you don't need to write AJAX handlers for standard form file fields.
 
+## AJAX Handlers in Partials
+
+Partials have limited AJAX capability by default. Use the `{% ajaxPartial %}` tag to register handlers from within a partial:
+
+```twig
+{% ajaxPartial 'my-counter' %}
+    <span>Count: {{ count }}</span>
+    <button data-request="onIncrement" data-request-update="{ _self: true }">+1</button>
+{% endajaxPartial %}
+```
+
 ## Common Pitfalls
 
 - Handler names must start with `on` (e.g., `onSubmit`, `onLoadMore`).
@@ -391,5 +584,7 @@ Note: The backend `fileupload` form widget handles file uploads automatically vi
 - Component handlers need the alias prefix: `componentAlias::onHandler`.
 - The `{% framework %}` tag must be present in the layout for AJAX to work.
 - Partial names in `data-request-update` do not include the `.htm` extension.
-- Use `$this->makePartial()` in PHP handlers when returning partial markup manually.
+- Partial names containing slashes or dashes must be quoted: `{ 'folder/my-partial': '#div' }`.
+- Use `$this->renderPartial()` in CMS handlers and `$this->makePartial()` in backend controllers.
 - The generic `onAjax` handler is available everywhere without defining it - useful for updating partials without server logic.
+- Use `data-request-files` (not `enctype`) to enable file uploads via AJAX.

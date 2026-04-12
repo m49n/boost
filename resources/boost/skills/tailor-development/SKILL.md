@@ -11,21 +11,28 @@ Tailor is October CMS's headless CMS feature that lets you define content struct
 
 ## Blueprint Types
 
+There are three top-level blueprint types: **Entry**, **Global**, and **Mixin**.
+
+Entry blueprints have several variants:
+
 Type | Purpose
 --- | ---
-`entry` | Content entries with optional drafts and versions
-`stream` | Ordered collection of records (like blog posts)
+`entry` | Base content type with no specific behavior
+`stream` | Time-stamped ordered collection (like blog posts)
 `structure` | Tree/hierarchy of records (like categories)
+`single` | Single record per site (like a homepage)
 `global` | Single global record (like site settings)
-`single` | Single record per site (like an about page)
 `mixin` | Reusable field groups included by other blueprints
 
 ## Blueprint File Location
 
-Blueprints are YAML files stored in the theme or registered by plugins:
+Blueprints are stored in two locations:
+
+- **App Blueprints** in `app/blueprints/` - globally available (primary location)
+- **Theme Blueprints** in `themes/{name}/blueprints/` - only available when that theme is active
 
 ```
-themes/mytheme/blueprints/
+app/blueprints/
 ├── blog/
 │   ├── post.yaml        ← Stream blueprint
 │   └── category.yaml    ← Structure blueprint
@@ -35,9 +42,11 @@ themes/mytheme/blueprints/
     └── settings.yaml    ← Global blueprint
 ```
 
-Or registered by plugins in `plugins/acme/blog/blueprints/`.
+Plugins can also register blueprints in `plugins/acme/blog/blueprints/`.
 
 ## Blueprint YAML Structure
+
+Blueprints contain three identifiers: `uuid` (auto-generated if omitted), `handle`, and `type`.
 
 ### Stream Blueprint (ordered collection)
 
@@ -47,7 +56,7 @@ type: stream
 name: Blog Post
 drafts: true
 
-primaryNavigation:
+navigation:
     label: Blog
     icon: icon-pencil
     order: 200
@@ -56,8 +65,7 @@ fields:
     title:
         label: Title
         type: text
-        validation:
-            - required
+        validation: required
 
     slug:
         label: Slug
@@ -96,17 +104,24 @@ handle: Blog\Category
 type: structure
 name: Blog Category
 
+navigation:
+    parent: Blog\Post
+    label: Categories
+    icon: icon-folder
+    order: 200
+
 fields:
     title:
         label: Title
         type: text
-        validation:
-            - required
+        validation: required
 
     description:
         label: Description
         type: textarea
 ```
+
+Secondary navigation is defined by setting `navigation.parent` to a parent blueprint's handle.
 
 ### Global Blueprint
 
@@ -114,8 +129,10 @@ fields:
 handle: Blog\Config
 type: global
 name: Blog Configuration
+formSize: large
 
-primaryNavigation:
+navigation:
+    parent: Blog\Post
     label: Blog Settings
     icon: icon-cog
     order: 300
@@ -130,6 +147,28 @@ fields:
         label: Show Sidebar
         type: switch
         default: true
+```
+
+### Single Blueprint
+
+```yaml
+handle: Pages\Homepage
+type: single
+name: Homepage
+
+navigation:
+    label: Homepage
+    icon: icon-home
+    order: 100
+
+fields:
+    hero_title:
+        label: Hero Title
+        type: text
+
+    hero_content:
+        label: Hero Content
+        type: richeditor
 ```
 
 ### Mixin Blueprint (reusable fields)
@@ -163,11 +202,57 @@ fields:
         source: Blog\MetaFields
 ```
 
+## Blueprint Properties
+
+Property | Description
+--- | ---
+`handle` | Unique blueprint code (required)
+`type` | entry/stream/structure/single/global/mixin (required)
+`name` | Display label (required)
+`fields` | Form field definitions
+`groups` | Content group definitions for multiple content types
+`drafts` | Enable draft/publish workflow. Default: `false`
+`softDeletes` | Enable soft deletion. Default: `true`
+`multisite` | Multisite mode. Default: `false`
+`pagefinder` | Page finder settings. Default: `true`
+`defaultSort` | Default sort column and direction
+`showExport` | Show export button. Default: `true`
+`showImport` | Show import button. Default: `true`
+`modelClass` | Custom PHP model class
+`customMessages` | Override UI messages
+
+## Content Groups
+
+Define multiple content types within a single blueprint:
+
+```yaml
+handle: Blog\Post
+type: stream
+name: Blog Post
+
+groups:
+    standard_post:
+        name: Standard Post
+        fields:
+            content:
+                label: Content
+                type: richeditor
+    video_post:
+        name: Video Post
+        fields:
+            video_url:
+                label: Video URL
+                type: text
+```
+
+The active group is stored in the `content_group` attribute.
+
 ## Common Content Field Types
 
 Type | Description
 --- | ---
 `text` | Single-line text input
+`email` | Email input
 `textarea` | Multi-line text area
 `number` | Number input
 `richeditor` | Rich text editor (HTML)
@@ -180,16 +265,98 @@ Type | Description
 `fileupload` | File upload (supports `mode: image`)
 `repeater` | Repeatable field groups
 `entries` | Relation to other Tailor entries
+`nesteditems` | Nested items belonging exclusively to this record
 `datepicker` | Date/time picker
 `colorpicker` | Color picker
 `codeeditor` | Code editor
+`taglist` | Tag list input
+`mediafinder` | Media library file picker
+`sensitive` | Revealable password field
+`pagefinder` | CMS page link selector
+`mixin` | Include fields from a mixin blueprint
+
+### Entries Field Properties
+
+Property | Description
+--- | ---
+`source` | Blueprint handle to relate to (required)
+`maxItems` | Maximum number of related entries
+`displayMode` | Display as `relation`, `recordfinder`, `taglist`, or `controller`
+`conditions` | Raw SQL where clause
+`modelScope` | PHP query scope to apply
+`inverse` | Inverse relationship definition
+
+## Field Validation
+
+Add validation rules directly in blueprint fields:
+
+```yaml
+fields:
+    email:
+        label: Email
+        type: text
+        validation: "required|email"
+
+    age:
+        label: Age
+        type: number
+        validation: "required|integer|min:0|max:150"
+```
+
+The `unique` rule is auto-configured and does not require a table name.
+
+Context-specific rules: `required:create`, `required:update`.
+
+## Columns and Scopes
+
+Customize the backend list and filter views per field:
+
+```yaml
+fields:
+    title:
+        label: Title
+        type: text
+        column: true        # Show in list (true, false, invisible, or label string)
+        scope: true          # Show in filters (true, false, or label string)
+
+    secret_notes:
+        label: Notes
+        type: textarea
+        column: false        # Hidden from list
+```
+
+Or define columns and scopes as separate sections:
+
+```yaml
+columns:
+    title:
+        label: Title
+        type: text
+        searchable: true
+    created_at:
+        label: Created
+        type: datetime
+
+scopes:
+    is_enabled:
+        label: Enabled
+        type: switch
+```
 
 ## Querying Tailor Entries
 
-In CMS pages or components, use the entry handle to query records:
+Each blueprint type has its own model class:
+
+Model Class | Blueprint Type
+--- | ---
+`Tailor\Models\EntryRecord` | entry, stream, structure
+`Tailor\Models\SingleRecord` | single
+`Tailor\Models\GlobalRecord` | global
 
 ```php
 use Tailor\Models\EntryRecord;
+use Tailor\Models\SingleRecord;
+use Tailor\Models\GlobalRecord;
 
 // Get all published posts
 $posts = EntryRecord::inSection('Blog\Post')
@@ -203,54 +370,71 @@ $post = EntryRecord::inSection('Blog\Post')
     ->first();
 
 // Get global values
-$config = EntryRecord::inSection('Blog\Config')->first();
+$config = GlobalRecord::findForGlobal('Blog\Config');
 $postsPerPage = $config->posts_per_page;
+
+// Get a single record
+$homepage = SingleRecord::findSingleForSection('Pages\Homepage');
 
 // Get structure as tree
 $categories = EntryRecord::inSection('Blog\Category')
     ->getNested();
+
+// Extend a Tailor model
+EntryRecord::extendInSection('Blog\Post', function ($model) {
+    $model->addDynamicMethod('getReadingTime', function () use ($model) {
+        return ceil(str_word_count(strip_tags($model->content)) / 200);
+    });
+});
 ```
+
+UUID-based lookups: `inSectionUuid()`, `findSingleForSectionUuid()`, `findForGlobalUuid()`.
 
 ## Tailor Components in Themes
 
-October CMS provides built-in Twig components for rendering Tailor content:
+Use CMS components (defined in the page INI section) to render Tailor content:
 
-```twig
-{# List entries #}
-{% collection posts = "Blog\Post" %}
-    {% for post in posts %}
-        <h2>{{ post.title }}</h2>
-        {{ post.content|raw }}
-    {% endfor %}
-{% endcollection %}
+### Collection Component
 
-{# Single global #}
-{% global config = "Blog\Config" %}
-    Posts per page: {{ config.posts_per_page }}
-{% endglobal %}
+```
+url = "/blog"
+layout = "default"
+
+[collection posts]
+handle = "Blog\Post"
+==
+{% for post in posts %}
+    <h2>{{ post.title }}</h2>
+    {{ post.content|raw }}
+{% endfor %}
+
+{{ pager(posts) }}
 ```
 
-## Field Validation
+### Section Component (for single entries by URL)
 
-Add validation rules directly in blueprint fields:
+```
+url = "/blog/:slug"
+layout = "default"
 
-```yaml
-fields:
-    email:
-        label: Email
-        type: text
-        validation:
-            - required
-            - email
+[section post]
+handle = "Blog\Post"
+entrySlug = "{{ :slug }}"
+==
+<h1>{{ post.title }}</h1>
+{{ post.content|raw }}
+```
 
-    age:
-        label: Age
-        type: number
-        validation:
-            - required
-            - integer
-            - min:0
-            - max:150
+### Global Component
+
+```
+url = "/"
+layout = "default"
+
+[global config]
+handle = "Blog\Config"
+==
+Posts per page: {{ config.posts_per_page }}
 ```
 
 ## Multisite with Tailor
@@ -262,56 +446,40 @@ handle: Blog\Post
 type: stream
 name: Blog Post
 multisite: sync
-
-fields:
-    title:
-        label: Title
-        type: text
 ```
 
 Multisite values:
-- `sync` - record is shared across all sites, editable from any site
-- `all` - record exists in all sites with independent content
-- `locale` - record exists per locale with independent content
-- `group` - record exists per site group with independent content
+- `true` - records are unique per site, all fields are translatable
+- `false` - multisite is disabled (default)
+- `sync` - records are synchronized within the site group
+- `all` - records are synchronized across all sites
+- `locale` - records are synchronized to sites sharing the same locale
 
-## Blueprint Navigation
+Global blueprints only support `true` or `false`.
 
-Blueprints can define primary and secondary navigation:
+## Navigation
+
+Blueprints define navigation using the `navigation` property:
 
 ```yaml
-primaryNavigation:
+# Primary navigation (top-level menu item)
+navigation:
     label: Blog
     icon: icon-pencil
     order: 200
 
-secondaryNavigation:
-    posts:
-        label: Posts
-        icon: icon-file-text
-    categories:
-        label: Categories
-        icon: icon-folder
+# Secondary navigation (under a parent)
+navigation:
+    parent: Blog\Post
+    label: Categories
+    icon: icon-folder
+    order: 210
 ```
 
-## Blueprint Columns
-
-Customize the backend list view for a blueprint:
-
-```yaml
-columns:
-    title:
-        label: Title
-        type: text
-        searchable: true
-    category:
-        label: Category
-        relation: category
-        select: title
-    is_enabled:
-        label: Enabled
-        type: switch
-```
+Special `parent` values:
+- Blueprint handle (e.g., `Blog\Post`) - nested under that blueprint
+- `settings` - placed in the Settings area
+- `content` - placed in the Content area
 
 ## Common Pitfalls
 
@@ -319,7 +487,8 @@ columns:
 - The `handle` uses backslash notation (`Blog\Post`), not dot notation.
 - Use `entries` field type for relations between Tailor entries, not `relation`.
 - Tailor auto-generates database tables - you do not write migrations.
-- Changes to blueprint fields may require running `php artisan october:migrate` to update the database schema.
-- Global blueprints have only one record - query with `->first()`.
+- Changes to blueprint fields require running `php artisan tailor:migrate` to update the database schema.
+- Use `GlobalRecord::findForGlobal()` for globals, `SingleRecord::findSingleForSection()` for singles.
 - Use `drafts: true` on the blueprint to enable draft/publish workflow.
-- The `multisite` property on blueprints controls content sharing - omitting it means the content is site-specific by default.
+- The `multisite` property defaults to `false` (multisite disabled, content is shared across all sites).
+- Blueprints stored in `app/blueprints/` are globally available; those in `themes/` are theme-specific.

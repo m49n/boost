@@ -51,12 +51,14 @@ class Plugin extends \System\Classes\PluginBase
             'description' => 'Provides blog features.',
             'author' => 'Acme',
             'icon' => 'icon-pencil',
+            'homepage' => 'https://example.com',
         ];
     }
 
     public function register()
     {
-        // Called when plugin is first registered (DI, singletons)
+        // Called when plugin is first registered (DI, singletons, commands)
+        $this->discoverConsoleCommands();
     }
 
     public function boot()
@@ -77,6 +79,8 @@ class Plugin extends \System\Classes\PluginBase
             'acme.blog.manage_posts' => [
                 'label' => 'Manage Blog Posts',
                 'tab' => 'Blog',
+                'order' => 200,
+                'roles' => ['developer'],
             ],
         ];
     }
@@ -90,6 +94,8 @@ class Plugin extends \System\Classes\PluginBase
                 'icon' => 'icon-pencil',
                 'permissions' => ['acme.blog.*'],
                 'order' => 500,
+                'counter' => [\Acme\Blog\Models\Post::class, 'getUnpublishedCount'],
+                'counterLabel' => 'Unpublished posts',
                 'sideMenu' => [
                     'posts' => [
                         'label' => 'Posts',
@@ -112,6 +118,9 @@ class Plugin extends \System\Classes\PluginBase
                 'icon' => 'icon-cog',
                 'class' => \Acme\Blog\Models\Settings::class,
                 'order' => 500,
+                'permissions' => ['acme.blog.manage_settings'],
+                'keywords' => 'blog settings configuration',
+                'size' => 'large',
             ],
         ];
     }
@@ -126,7 +135,7 @@ class Plugin extends \System\Classes\PluginBase
     public function registerMailTemplates()
     {
         return [
-            'acme.blog::mail.post-notification',
+            'acme.blog:post-notification' => 'acme.blog::mail.post-notification',
         ];
     }
 }
@@ -136,17 +145,21 @@ class Plugin extends \System\Classes\PluginBase
 
 Method | Purpose
 --- | ---
-`pluginDetails()` | Plugin metadata (name, description, author, icon)
-`register()` | Service registration, singletons (called first)
+`pluginDetails()` | Plugin metadata (name, description, author, icon, homepage)
+`register()` | Service registration, singletons, commands (called first)
 `boot()` | Event listeners, model extensions (called after all plugins registered)
 `registerComponents()` | CMS frontend components
 `registerPermissions()` | Backend permission definitions
 `registerNavigation()` | Backend menu items and side menus
 `registerSettings()` | Settings pages (model-based or URL-based)
 `registerFormWidgets()` | Custom form field widgets
+`registerFilterWidgets()` | Custom filter widgets
+`registerReportWidgets()` | Backend dashboard report widgets
 `registerMailTemplates()` | Mail template definitions
+`registerMarkupTags()` | Custom Twig filters and functions
+`registerListColumnTypes()` | Custom list column types
+`registerContentFields()` | Tailor content fields
 `registerSchedule($schedule)` | Task scheduler definitions
-`registerConsoleCommand($key, $class)` | Artisan commands
 
 ## Version History
 
@@ -173,7 +186,7 @@ v2.0.0:
 
 ## Migrations
 
-Migration files live in `updates/` and use **anonymous classes** with zero-padded numbered filenames:
+Migration files live in `updates/` and use zero-padded numbered filenames:
 
 ```php
 <?php // updates/000001_create_posts.php
@@ -186,7 +199,7 @@ return new class extends Migration
     public function up()
     {
         Schema::create('acme_blog_posts', function (Blueprint $table) {
-            $table->bigIncrements('id');
+            $table->increments('id');
             $table->string('title');
             $table->string('slug')->index();
             $table->mediumText('content')->nullable();
@@ -207,8 +220,8 @@ return new class extends Migration
 ### Migration Conventions
 
 - **Filenames** use zero-padded numbering: `000001_create_posts.php`, `000002_create_categories.php`
-- **Anonymous classes**: use `return new class extends Migration` not named classes
-- **IDs**: use `$table->bigIncrements('id')` not `$table->id()`
+- **Anonymous classes**: prefer `return new class extends Migration` (named classes also supported)
+- **IDs**: use `$table->increments('id')` not `$table->id()`
 - **Table names**: `{author}_{plugin}_{plural_name}` in snake_case (e.g., `acme_blog_posts`)
 - **Extension migrations** that modify another plugin's tables use `x` prefix: `x00001_extend_user_groups.php`
 - **Version migrations** for major/minor upgrades use `migrate_v{X}_{Y}_{Z}.php` naming (see below)
@@ -300,6 +313,10 @@ public function boot()
             return;
         }
 
+        if ($form->isNested) {
+            return;
+        }
+
         $form->addTabFields([
             'posts' => [
                 'label' => 'Blog Posts',
@@ -357,6 +374,10 @@ public function boot()
     // Global events
     \Event::listen('backend.form.extendFields', function ($widget) {
         if (!$widget->getController() instanceof \Acme\User\Controllers\Users) {
+            return;
+        }
+
+        if ($widget->isNested) {
             return;
         }
 
@@ -422,7 +443,18 @@ class MyCommand extends Command
 }
 ```
 
-Register in Plugin.php:
+Register commands using auto-discovery (preferred):
+
+```php
+public function register()
+{
+    $this->discoverConsoleCommands();
+}
+```
+
+This automatically finds and registers all command classes in the plugin's `console` directory.
+
+Or register individually:
 
 ```php
 public function register()
@@ -455,19 +487,12 @@ Access strings:
 ```php
 echo __('Manage Posts');
 echo __(':name created a post', ['name' => 'Jeff']);
-```
-
-Pluralization:
-
-```json
-{
-    "There is one post|There are many posts": "There is one post|There are many posts"
-}
+echo __('There is one post|There are many posts', 3);
 ```
 
 ## Mail Templates
 
-Mail views use a three-section format (subject, plain text, HTML) in `views/mail/`:
+Mail views use a three-section format (subject, plain text, HTML) in `views/mail/*.htm`:
 
 ```
 subject = "New post published: {{ title }}"
@@ -498,9 +523,9 @@ Register templates in Plugin.php with `registerMailTemplates()` (see above).
 - The `register()` method runs before all plugins are loaded - do not reference other plugins here; use `boot()` instead.
 - Table names must be globally unique - always prefix with author and plugin name.
 - Never modify migrations that have run in production - create new migration files instead.
-- Migrations use anonymous classes (`return new class extends Migration`), not named classes.
 - Migration filenames are zero-padded numbered (`000001_create_posts.php`), not descriptive names.
 - The `$require` array uses dot notation (`Acme.Blog`), not namespace notation.
 - Settings models do not need a migration - they store data automatically in the `system_settings` table.
 - Always check the controller/model type in event listeners to avoid extending the wrong form or list.
-- Console commands need both a class and registration via `registerConsoleCommand()` in `register()` (not `boot()`).
+- Always check `$widget->isNested` in form extend listeners to avoid affecting repeaters and nested forms.
+- Use `discoverConsoleCommands()` in `register()` for automatic command discovery, or `registerConsoleCommand()` for manual registration.

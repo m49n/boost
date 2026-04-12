@@ -59,6 +59,7 @@ Custom tools that give AI agents real-time access to your October CMS applicatio
 
 Tool | Purpose
 --- | ---
+`SearchOctoberDocs` | Search official documentation for Laravel, October CMS, Larajax, and Meloncart
 `GetBlueprints` | List and inspect Tailor blueprint definitions
 `GetPluginRegistration` | List plugins with their components, permissions, navigation
 `GetThemeStructure` | Inspect the active theme's pages, layouts, and partials

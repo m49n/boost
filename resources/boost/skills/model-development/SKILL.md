@@ -41,7 +41,7 @@ class Post extends Model
      */
     public $rules = [
         'title' => 'required',
-        'slug' => 'required|unique:acme_blog_posts',
+        'slug' => ['required', 'unique'],
         'email' => 'required|email',
     ];
 
@@ -58,11 +58,6 @@ class Post extends Model
     protected $slugs = ['slug' => 'title'];
 
     /**
-     * @var array dates for date/time columns.
-     */
-    protected $dates = ['published_at', 'deleted_at'];
-
-    /**
      * @var array jsonable for JSON-serialized columns.
      */
     protected $jsonable = ['metadata', 'options'];
@@ -73,9 +68,33 @@ class Post extends Model
     protected $fillable = ['title', 'slug', 'content'];
 
     /**
+     * @var array guarded fields from mass assignment.
+     */
+    protected $guarded = ['id'];
+
+    /**
      * @var array hidden fields from serialization.
      */
     protected $hidden = ['password'];
+
+    /**
+     * @var array visible fields for serialization (whitelist alternative to $hidden).
+     */
+    protected $visible = [];
+
+    /**
+     * @var array appends accessor values to serialization.
+     */
+    protected $appends = ['full_name'];
+
+    /**
+     * @var array casts for scalar type casting.
+     */
+    protected $casts = [
+        'is_published' => 'boolean',
+        'published_at' => 'datetime',
+        'options' => 'array',
+    ];
 
     /*
      * Relationships
@@ -146,10 +165,10 @@ Type | Property | Key Parameters
 --- | --- | ---
 One to One | `$hasOne` | `key`, `otherKey`
 One to Many | `$hasMany` | `key`, `otherKey`, `delete`, `order`, `conditions`
-Belongs To | `$belongsTo` | `key`, `otherKey`
-Many to Many | `$belongsToMany` | `table`, `key`, `otherKey`, `pivot`, `pivotModel`, `timestamps`
-Has Many Through | `$hasManyThrough` | `through`, `key`, `throughKey`
-Has One Through | `$hasOneThrough` | `through`, `key`, `throughKey`
+Belongs To | `$belongsTo` | `key`, `otherKey`, `default`
+Many to Many | `$belongsToMany` | `table`, `key`, `otherKey`, `parentKey`, `relatedKey`, `pivot`, `pivotModel`, `pivotSortable`, `pivotKey`, `timestamps`, `detach`
+Has Many Through | `$hasManyThrough` | `through`, `key`, `throughKey`, `secondOtherKey`
+Has One Through | `$hasOneThrough` | `through`, `key`, `throughKey`, `secondOtherKey`
 Morph One | `$morphOne` | `name`
 Morph Many | `$morphMany` | `name`, `delete`, `order`
 Morph To | `$morphTo` | (empty array `[]`)
@@ -167,12 +186,16 @@ Parameter | Description
 `scope` | Model scope method to apply
 `push` | Whether the relation is saved via `push()`. Default: `true`
 `replicate` | Whether the relation is duplicated when replicating. Default: `false`
+`default` | For `belongsTo`, return an empty model instead of null (Null Object pattern)
+`detach` | For `belongsToMany`, detach records when parent is deleted. Default: `true`
+`relationClass` | Custom class for the relation object (available on all relations)
 
 ### File Attachments
 
 ```php
 public $attachOne = [
     'avatar' => [\System\Models\File::class],
+    'secret_file' => [\System\Models\File::class, 'public' => false],
 ];
 
 public $attachMany = [
@@ -182,11 +205,20 @@ public $attachMany = [
 
 Access in Twig:
 ```twig
-<img src="{{ post.featured_image.path }}" />
+<img src="{{ post.featured_image.url }}" />
 
 {% for photo in post.gallery %}
-    <img src="{{ photo.thumb(200, 200) }}" />
+    <img src="{{ photo.thumbUrl(200, 200) }}" />
 {% endfor %}
+```
+
+PHP methods: `getUrl()`, `getThumbUrl(width, height, options)`, `getLocalPath()`, `output()`, `download()`.
+
+Creating attachments in PHP:
+```php
+$model->avatar = \System\Models\File::fromFile('/path/to/file.jpg');
+$model->avatar = \System\Models\File::fromUrl('https://example.com/image.jpg');
+$model->avatar = \System\Models\File::fromData('raw-data', 'filename.txt');
 ```
 
 ## Validation Trait
@@ -198,8 +230,9 @@ use \October\Rain\Database\Traits\Validation;
 
 public $rules = [
     'name' => 'required|min:3',
-    'email' => 'required|email|unique:users',
+    'email' => 'required|email|unique',
     'password' => 'required:create|min:8|confirmed',
+    'links.*.url' => ['required', 'url'],
 ];
 
 public $customMessages = [
@@ -213,7 +246,11 @@ public $attributeNames = [
 
 The `:create` and `:update` suffixes make rules context-specific:
 - `'password' => 'required:create'` - only required when creating
-- `'email' => 'unique:users:update'` - only unique check when updating
+- `'email' => 'unique:update'` - only unique check when updating
+
+The `unique` rule is auto-configured and does not require a table name.
+
+Use `$model->forceSave()` to save regardless of validation errors.
 
 ## Available Traits
 
@@ -222,9 +259,13 @@ Trait | Purpose
 `Validation` | Automatic model validation with `$rules`
 `SoftDelete` | Soft deletes (requires `deleted_at` column)
 `Sluggable` | Auto-generate slugs from other fields
+`SluggableTree` | Hierarchical slugs building full paths (requires `fullslug` column)
 `Sortable` | Drag-and-drop sorting (requires `sort_order` column)
+`SortableRelation` | Sort records in pivot/belongsToMany tables (uses `pivotSortable`)
 `NestedTree` | Nested set tree structure (requires `parent_id`, `nest_left`, `nest_right`, `nest_depth`)
 `SimpleTree` | Simple parent/child tree (requires `parent_id`)
+`BaseIdentifier` | Random base64 encoded identifiers (requires `baseid` column)
+`Defaultable` | Designate one record as default (requires `is_default` column)
 `Purgeable` | Remove temporary attributes before save
 `Revisionable` | Track changes to specified fields
 `Nullable` | Set empty string attributes to null
@@ -255,6 +296,16 @@ use \October\Rain\Database\Traits\Sortable;
 use \October\Rain\Database\Traits\NestedTree;
 
 // Requires parent_id, nest_left, nest_right, nest_depth columns
+```
+
+### SortableRelation Example
+
+```php
+use \October\Rain\Database\Traits\SortableRelation;
+
+public $belongsToMany = [
+    'roles' => [Role::class, 'table' => 'user_roles', 'pivotSortable' => 'sort_order'],
+];
 ```
 
 ## Model Events
@@ -316,6 +367,16 @@ public function afterDelete()
     // After deletion
 }
 
+public function beforeRestore()
+{
+    // Before restoring a soft-deleted record
+}
+
+public function afterRestore()
+{
+    // After restoring a soft-deleted record
+}
+
 public function beforeFetch()
 {
     // Before a model is populated from the database
@@ -374,6 +435,16 @@ public function setPasswordAttribute($value)
 
 Access: `$model->full_name`, `$model->password = 'secret'`.
 
+External accessors/mutators can be added via events:
+
+```php
+$model->bindEvent('model.getAttribute', function ($key, $value) {
+    if ($key === 'full_address') {
+        return $this->street . ', ' . $this->city;
+    }
+});
+```
+
 ## Eager Loading
 
 Use the `$with` property to always eager-load relations:
@@ -410,6 +481,9 @@ $post->comments()->withDeferred($sessionKey)->get();
 // Commit deferred bindings when saving
 $post->save(['sessionKey' => $sessionKey]);
 
+// Commit deferred bindings without saving
+$post->commitDeferred($sessionKey);
+
 // Cancel all deferred bindings
 $post->cancelDeferred($sessionKey);
 ```
@@ -432,6 +506,11 @@ Extend models from other plugins in your `boot()` method:
 
     // Add validation rules
     $model->rules['phone'] = 'nullable|string';
+
+    // Add protected properties
+    $model->addFillable(['phone', 'bio']);
+    $model->addJsonable(['preferences']);
+    $model->addCasts(['is_verified' => 'boolean']);
 
     // Listen to local events
     $model->bindEvent('model.beforeSave', function () use ($model) {
@@ -461,13 +540,13 @@ This is automatically used by `type: dropdown` fields in `fields.yaml` when the 
 
 - Use **array-based** relationship definitions (`$hasMany = [...]`), never Laravel's fluent methods (`$this->hasMany(...)`).
 - Table names use the `{author}_{plugin}_{plural}` convention (e.g., `acme_blog_posts`).
-- The `Validation` trait validates automatically on `save()` - you don't need to call `validate()` manually.
-- Use `$jsonable` for JSON columns, not `$casts = ['field' => 'array']`.
+- The `Validation` trait validates automatically on `save()` - you can also call `validate()` manually.
+- Both `$jsonable` and `$casts = ['field' => 'array']` work for JSON columns. Use whichever matches existing code patterns.
 - File attachments use `System\Models\File`, not any other file model.
 - Model events are method overrides (`beforeSave()`), not event listeners or closures.
 - The `$rules` property supports `:create` and `:update` context suffixes.
 - Always import the `Model` alias (`use Model;`), not the full `October\Rain\Database\Model` class directly.
 - Pivot table names for `belongsToMany` follow the convention `{author}_{plugin}_{model1}_{model2}` in alphabetical order.
-- `$casts` works for scalar types (`boolean`, `integer`, `datetime`) but use `$jsonable` for JSON columns, not `$casts = ['field' => 'array']`.
 - Deferred bindings are handled automatically by the form behavior - you rarely need to manage session keys manually.
 - Use `$model->bindEvent()` for local events and `\Event::listen()` for global events - they serve different purposes.
+- Use `.url` and `.thumbUrl()` in Twig for file attachments, not `.path` or `.thumb`.

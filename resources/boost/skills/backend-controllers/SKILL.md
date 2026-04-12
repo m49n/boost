@@ -52,7 +52,7 @@ Behavior | Purpose | Config Property
 `FormController` | Create, update, preview forms | `$formConfig`
 `ListController` | Sortable, searchable record lists | `$listConfig`
 `RelationController` | Manage model relationships in forms | `$relationConfig`
-`ImportExportController` | CSV import and export | `$importExportConfig`
+`ImportExportController` | Import and export records | `$importExportConfig`
 
 ## List Configuration (config_list.yaml)
 
@@ -62,6 +62,7 @@ list: $/acme/blog/models/post/columns.yaml
 modelClass: Acme\Blog\Models\Post
 recordUrl: acme/blog/posts/update/:id
 recordsPerPage: 20
+showCheckboxes: true
 defaultSort:
     column: created_at
     direction: desc
@@ -71,6 +72,8 @@ toolbar:
         prompt: Search posts...
 filter: $/acme/blog/models/post/scopes.yaml
 ```
+
+Additional list config properties: `recordOnClick`, `noRecordsMessage`, `showSetup`, `showSorting`, `showPageNumbers`, `perPageOptions`, `customViewPath`.
 
 ### List Columns (columns.yaml)
 
@@ -94,6 +97,8 @@ columns:
         type: datetime
 ```
 
+Common column types: `text`, `number`, `switch`, `datetime`, `date`, `time`, `timesince`, `timetense`, `image`, `file`, `summary`, `partial`, `colorpicker`, `selectable`, `linkage`.
+
 ### List Filters (scopes.yaml)
 
 ```yaml
@@ -101,12 +106,30 @@ scopes:
     is_published:
         label: Published
         type: switch
-        conditions: is_published = :filtered
+        conditions:
+            - is_published <> true
+            - is_published = true
     category:
         label: Category
+        type: group
         modelClass: Acme\Blog\Models\Category
         nameFrom: name
+    created_at:
+        label: Created
+        type: date
+        conditions:
+            between: created_at >= :after AND created_at <= :before
+    status:
+        label: Status
+        type: group
+        options:
+            draft: Draft
+            published: Published
+            archived: Archived
+        conditions: status = :filtered
 ```
+
+Available filter scope types: `group`, `switch`, `date`, `text`, `number`, `checkbox`, `dropdown`.
 
 ### Toolbar Partial (_list_toolbar.php)
 
@@ -146,6 +169,18 @@ update:
 preview:
     title: View Blog Post
 ```
+
+### Form Designs
+
+The `design` property controls form layout mode:
+
+```yaml
+design: sidebar
+```
+
+Available display modes: `custom` (default), `basic`, `survey`, `sidebar`, `popup`.
+
+When using `popup`, the list controller can open forms in a popup via `recordOnClick: popup`.
 
 ### Form Fields (fields.yaml)
 
@@ -197,12 +232,15 @@ secondaryTabs:
 Type | Description
 --- | ---
 `text` | Single-line text
+`email` | Email input
+`password` | Password input
 `textarea` | Multi-line text
 `number` | Number input
 `dropdown` | Dropdown select (uses `getFieldNameOptions()` on model)
 `radio` | Radio buttons
 `checkbox` | Single checkbox
 `checkboxlist` | Multiple checkboxes
+`balloon-selector` | Visual pill/balloon selector
 `switch` | Toggle switch
 `datepicker` | Date/time picker
 `colorpicker` | Color picker
@@ -210,8 +248,15 @@ Type | Description
 `markdown` | Markdown editor
 `codeeditor` | Code editor
 `fileupload` | File upload
+`mediafinder` | Media library file picker
 `relation` | Relation dropdown/list
+`recordfinder` | Related record finder with popup
 `repeater` | Repeatable field groups
+`nestedform` | Nested form for related/jsonable data
+`taglist` | Tag list input
+`datatable` | Editable table/grid
+`sensitive` | Revealable password field (for API keys)
+`pagefinder` | CMS page link selector
 `partial` | Render a custom partial
 `section` | Visual section divider
 `hint` | Help text block
@@ -222,7 +267,7 @@ Property | Description
 --- | ---
 `label` | Field label
 `type` | Field widget type
-`span` | `auto`, `full`, `left`, `right`, `row`, `storm`
+`span` | `auto`, `full`, `left`, `right`, `row`
 `tab` | Tab name for tabbed forms
 `comment` | Help text below the field
 `commentAbove` | Help text above the field
@@ -235,10 +280,13 @@ Property | Description
 `readOnly` | Read-only field
 `context` | Show only in specific contexts: `create`, `update`, `preview`
 `dependsOn` | Other fields this field depends on for dynamic updates
+`changeHandler` | AJAX handler to call when field value changes
 `trigger` | Show/hide based on another field's value
 `preset` | Auto-populate from another field
 
 ## Relation Configuration (config_relation.yaml)
+
+### Has Many
 
 ```yaml
 comments:
@@ -249,6 +297,57 @@ comments:
     manage:
         form: $/acme/blog/models/comment/fields.yaml
 ```
+
+### Belongs To Many
+
+```yaml
+tags:
+    label: Tags
+    view:
+        list: $/acme/blog/models/tag/columns.yaml
+        toolbarButtons: add|remove
+    manage:
+        list: $/acme/blog/models/tag/columns.yaml
+        form: $/acme/blog/models/tag/fields.yaml
+```
+
+### Belongs To Many with Pivot Data
+
+```yaml
+roles:
+    label: Roles
+    view:
+        list: $/acme/blog/models/role/columns.yaml
+        toolbarButtons: add|remove
+    manage:
+        list: $/acme/blog/models/role/columns.yaml
+    pivot:
+        form: $/acme/blog/models/role/pivot_fields.yaml
+```
+
+### Belongs To
+
+```yaml
+author:
+    label: Author
+    view:
+        toolbarButtons: link|unlink
+    manage:
+        list: $/acme/blog/models/author/columns.yaml
+```
+
+### Has One
+
+```yaml
+profile:
+    label: Profile
+    view:
+        toolbarButtons: update|delete
+    manage:
+        form: $/acme/blog/models/profile/fields.yaml
+```
+
+Additional relation config properties: `popupSize` (`giant`, `huge`, `large`, `small`, `tiny`, `adaptive`), `deferredBinding`, `customMessages`, `showFlash`, `showSearch`, `defaultSort`, `filter`.
 
 ## Controller Views
 
@@ -291,6 +390,10 @@ Views are PHP files in the controller's views directory:
 ```php
 Posts::extendFormFields(function ($form, $model, $context) {
     if (!$model instanceof \Acme\Blog\Models\Post) {
+        return;
+    }
+
+    if ($form->isNested) {
         return;
     }
 
@@ -343,6 +446,7 @@ class Posts extends \Backend\Classes\Controller
     public function formAfterUpdate($model) { }
 
     // Before/after delete
+    public function formBeforeDelete($model) { }
     public function formAfterDelete($model) { }
 
     // Extend the form query
@@ -357,8 +461,8 @@ class Posts extends \Backend\Classes\Controller
     // Modify the form model
     public function formExtendModel($model) { }
 
-    // Extend the refresh data for specific fields
-    public function formExtendRefreshData($form, $fields) { }
+    // Override redirect URL
+    public function formGetRedirectUrl($context, $model) { }
 }
 ```
 
@@ -376,12 +480,22 @@ class Posts extends \Backend\Classes\Controller
     public function listExtendColumns($list) { }
 
     // Modify records after retrieval
-    public function listExtendRecords($records, $definition = null) { }
+    public function listExtendRecords($records) { }
+
+    // Inject custom CSS class on rows
+    public function listInjectRowClass($record, $definition = null) {
+        if ($record->is_archived) {
+            return 'strike';
+        }
+    }
+
+    // Override record click URL
+    public function listOverrideRecordUrl($record, $definition = null) { }
 
     // Modify list filter scopes
     public function listFilterExtendScopes($filter) { }
 
-    // Override how list records are retrieved
+    // Override how list filter queries work
     public function listFilterExtendQuery($query, $scope) { }
 }
 ```
@@ -400,8 +514,9 @@ export:
     title: Export Subscribers
     modelClass: Acme\Campaign\Models\SubscriberExport
     list: $/acme/campaign/models/subscriber/columns.yaml
-    fileName: subscribers.csv
 ```
+
+The default import/export format is JSON. CSV is also supported via `defaultFormatOptions`.
 
 ### Import Model
 
@@ -445,16 +560,28 @@ class SubscriberExport extends \Backend\Models\ExportModel
 }
 ```
 
-### Controller View (import_export.php)
+The `useList` export property integrates with the ListController, avoiding the need for a separate export model.
+
+### Controller Views
+
+Import and export use separate view files:
 
 ```php
+<!-- controllers/subscribers/import.php -->
 <?php Block::put('breadcrumb') ?>
-    <li><span>Import / Export</span></li>
+    <li><span>Import Subscribers</span></li>
 <?php Block::endPut() ?>
 
-<div class="padded-container">
-    <?= $this->importExportRender() ?>
-</div>
+<?= $this->importRender() ?>
+```
+
+```php
+<!-- controllers/subscribers/export.php -->
+<?php Block::put('breadcrumb') ?>
+    <li><span>Export Subscribers</span></li>
+<?php Block::endPut() ?>
+
+<?= $this->exportRender() ?>
 ```
 
 ## List Structure (Sorting & Reordering)
@@ -526,35 +653,6 @@ roles:
         showTree: false
 ```
 
-## Additional Filter Scope Types
-
-```yaml
-scopes:
-    is_published:
-        label: Published
-        type: switch
-        conditions: is_published = :filtered
-    category:
-        label: Category
-        type: group
-        modelClass: Acme\Blog\Models\Category
-        nameFrom: name
-    created_at:
-        label: Created
-        type: daterange
-        conditions: created_at >= ':after' AND created_at <= ':before'
-    status:
-        label: Status
-        type: group
-        options:
-            draft: Draft
-            published: Published
-            archived: Archived
-        conditions: status = :filtered
-```
-
-Available filter scope types: `group`, `switch`, `date`, `daterange`, `text`, `number`, `numberrange`, `checkbox`, `dropdown`, `clear`.
-
 ## Custom AJAX Handlers in Controllers
 
 Controllers can define AJAX handlers called from backend pages:
@@ -582,11 +680,12 @@ class Posts extends \Backend\Classes\Controller
 
 - Always set `BackendMenu::setContext()` in the constructor to highlight the correct menu.
 - Config YAML paths use `$/` or `~/` prefix for absolute plugin paths.
-- The `relation` field type in forms requires `RelationController` behavior to be implemented on the controller.
+- The `relation` field type works as a standalone dropdown/list. `RelationController` behavior is optional and auto-detected via `useController` (default `true`).
 - Use `$requiredPermissions` to restrict controller access - this is an array of permission codes.
 - Form views (`create.php`, `update.php`) must exist even if they just call `$this->formRender()`.
 - The list toolbar partial name should match what's specified in `config_list.yaml` under `toolbar.buttons`.
-- Use `$this->listRefresh()` and `$this->formRefreshField('field')` to update the UI from AJAX handlers.
+- Use `$this->listRefresh()` and `$this->formRefreshFields('field')` to update the UI from AJAX handlers.
 - Import/Export models extend `Backend\Models\ImportModel` and `Backend\Models\ExportModel` - not the regular plugin model.
 - Controller behavior overrides (e.g., `formBeforeSave`) are methods on the controller, not the model.
 - Multiple list definitions use array syntax: `$listConfig = ['posts' => 'config_list.yaml', 'comments' => 'config_comments_list.yaml']`.
+- Always check `$form->isNested` in `extendFormFields` to avoid affecting repeaters and nested forms.
