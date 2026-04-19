@@ -65,6 +65,16 @@ class GetBlueprints extends Tool
     {
         $blueprint = \Tailor\Classes\BlueprintIndexer::instance()->findByHandle($handle);
 
+        // Indexer only finds sections and globals, fall back to listInProject for mixins
+        if (!$blueprint) {
+            foreach (\Tailor\Classes\Blueprint::listInProject() as $bp) {
+                if ($bp->handle === $handle) {
+                    $blueprint = $bp;
+                    break;
+                }
+            }
+        }
+
         if (!$blueprint) {
             return Response::error("Blueprint with handle '{$handle}' not found.");
         }
@@ -75,6 +85,10 @@ class GetBlueprints extends Tool
             'name' => $blueprint->name,
             'fileName' => $blueprint->fileName,
         ];
+
+        if ($tableNames = $this->getTableNames($blueprint)) {
+            $data['tableNames'] = $tableNames;
+        }
 
         if (isset($blueprint->drafts)) {
             $data['drafts'] = $blueprint->drafts;
@@ -105,6 +119,10 @@ class GetBlueprints extends Tool
                 'name' => $blueprint->name,
             ];
 
+            if ($tableName = $blueprint->getContentTableName()) {
+                $entry['contentTableName'] = $tableName;
+            }
+
             if (!$summary && isset($blueprint->fields)) {
                 $entry['fields'] = $blueprint->fields;
             }
@@ -113,5 +131,27 @@ class GetBlueprints extends Tool
         }
 
         return Response::json(['blueprints' => $blueprints]);
+    }
+
+    /**
+     * getTableNames returns all database table names for a blueprint.
+     */
+    protected function getTableNames(\Tailor\Classes\Blueprint $blueprint): array
+    {
+        $tables = [];
+
+        if ($name = $blueprint->getContentTableName()) {
+            $tables['content'] = $name;
+        }
+
+        if ($name = $blueprint->getJoinTableName()) {
+            $tables['join'] = $name;
+        }
+
+        if ($name = $blueprint->getRepeaterTableName()) {
+            $tables['repeater'] = $name;
+        }
+
+        return $tables;
     }
 }
