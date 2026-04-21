@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace October\Boost\Tools;
 
-use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Cache;
 use Laravel\Boost\Concerns\MakesHttpRequests;
 use Laravel\Mcp\Request;
