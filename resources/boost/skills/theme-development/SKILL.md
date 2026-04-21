@@ -254,7 +254,7 @@ Content files support four extensions:
 
 ## CMS Components
 
-Components are PHP classes that provide frontend functionality. They are attached to pages in the configuration section:
+Components are PHP classes that provide page variables (data) and AJAX handlers (server-side actions). They are attached to pages in the configuration section. You write your own markup using the variables and handlers they provide.
 
 ```ini
 url = "/blog"
@@ -265,17 +265,20 @@ postsPerPage = 10
 sortOrder = "published_at desc"
 ```
 
-Using the component in Twig:
+Using component data and handlers in your markup:
 
 ```twig
-{# Render the component's default partial #}
-{% component 'blogPosts' %}
-
-{# Or access component properties directly #}
-{% for post in blogPosts.posts %}
-    <h2>{{ post.title }}</h2>
+{% for post in posts %}
+    <article>
+        <h2><a href="{{ post.url }}">{{ post.title }}</a></h2>
+        <p>{{ post.excerpt }}</p>
+    </article>
 {% endfor %}
+
+<button data-request="onLoadMore">Load More</button>
 ```
+
+**Important**: Always write custom markup using the component's page variables and AJAX handlers. Do NOT default to using `{% component %}` or creating override partials at `partials/{alias}/`. The component's default partials are reference implementations only, not a starting point for customization.
 
 ### Built-in CMS Components
 
@@ -364,21 +367,23 @@ Method | When Called
 `onRender()` | Before the component's default partial is rendered
 `onSomething()` | AJAX handlers, called on demand
 
-### Component Default Partial
+### Component Reference Partials
 
-Components can provide a default partial in `components/blogposts/default.htm`:
+Components ship with default partials in the plugin directory (e.g. `plugins/acme/blog/components/blogposts/default.htm`). These are reference implementations that show what variables are available and how handlers are called. Look at them to understand the component's API, then write your own markup.
 
 ```
 plugins/acme/blog/
 └── components/
     ├── BlogPosts.php
     └── blogposts/
-        └── default.htm
+        └── default.htm    ← Reference only, not used in your theme
 ```
+
+For quick prototyping, you can render this default markup with `{% component 'blogPosts' %}`, but this is not intended for production themes.
 
 ### Component Partial Overriding
 
-Override a component's partials from the theme by creating files at `partials/{alias}/partial-name.htm`.
+In rare cases where you want to use a component's default markup but customize a specific partial within it, you can create a file at `partials/{alias}/partial-name.htm` in your theme. This is a niche feature for components with complex internal structure. In most cases, writing your own markup directly is simpler and more flexible.
 
 ## Twig Reference
 
@@ -641,6 +646,7 @@ Combine and minify assets using the `|theme` filter and asset combiner:
 
 ## Common Pitfalls
 
+- When using components, write your own markup using the page variables and AJAX handlers they provide. Do not use `{% component %}` or create override partials at `partials/{alias}/` unless you have a specific reason.
 - Template paths are always absolute from the theme root: `{% partial "blog/post-card" %}` not `{% partial "post-card" %}`.
 - The PHP section only allows function definitions and `use` statements - no loose code.
 - Use `{{ variable|raw }}` for HTML content, `{{ variable }}` auto-escapes.
